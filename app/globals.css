@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
+/* placeholder values, matched by eye from the figma screenshots.
+   replaced with exact tokens once the figma api pull lands. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a0a0a;
+  --muted: #a3a3a3;
+  --field: #f2f2f2;
+  --field-border: #ebebeb;
+  --radius-control: 16px;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-muted: var(--muted);
+  --color-field: var(--field);
+  --color-field-border: var(--field-border);
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui), system-ui, sans-serif;
+  /* no pull-to-refresh mid-cook */
+  overscroll-behavior-y: none;
+}
+
+/* crimson pro carries every display line: "hi there!", recipe titles,
+   "got a quick question?". inter carries everything else.
+   the figma style is crimson pro light 36 / auto / -5%, so weight,
+   tracking and line height all live here rather than at every call site. */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 300;
+  letter-spacing: -0.05em;
+  line-height: normal;
 }
