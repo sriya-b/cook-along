@@ -17,6 +17,13 @@ import { findAnswer, FALLBACK } from "@/lib/knowledge";
 import { useCamera } from "@/lib/useCamera";
 import { useStation } from "@/lib/useStation";
 
+/** how long the cook's own line sits alone before the answer lands */
+const REPLY_DELAY = 800;
+/** ...and how long the answer is readable before the recipe moves itself on */
+const ADVANCE_DELAY = 2600;
+/** an ordinary answer clears itself so the station line can come back */
+const EXCHANGE_LIFE = 9000;
+
 function mmss(total: number) {
   const m = Math.floor(total / 60);
   const s = total % 60;
@@ -27,6 +34,9 @@ function mmss(total: number) {
 function sentence(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** one round of chat, shown in the assistant zone */
+type Exchange = { you: string; reply: string | null };
 
 function CookScreen() {
   const params = useSearchParams();
@@ -89,42 +99,64 @@ function CookScreen() {
 
   // --- chat ---------------------------------------------------------------
   const [draft, setDraft] = useState("");
+  const [exchange, setExchange] = useState<Exchange | null>(null);
+  const chatRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearChatTimers = useCallback(() => {
+    chatRef.current.forEach(clearTimeout);
+    chatRef.current = [];
+  }, []);
+
+  useEffect(() => clearChatTimers, [clearChatTimers]);
+
+  const next = useCallback(
+    () => setIndex((i) => Math.min(i + 1, recipe.steps.length - 1)),
+    [],
+  );
 
   function ask(input: string) {
     const q = input.trim();
     if (!q) return;
     setDraft("");
+    clearChatTimers();
+
+    // the cook's own line goes up first, then the answer lands after it
+    setExchange({ you: q, reply: null });
 
     // "I don't have bell peppers" rewrites the recipe rather than answering
     const omit = findOmission(q);
-    if (omit && !omitted.has(omit)) {
-      const { label, advice } = OMISSIONS[omit];
-      setOmitted((prev) => new Set(prev).add(omit));
-      showTip(`Updating recipe without ${label}. ${advice}`, true);
-      return;
-    }
+    const dropping = omit !== null && !omitted.has(omit);
 
-    const hit = findAnswer(q, step.n);
-    showTip(hit ? hit.text : FALLBACK, true);
+    const reply = dropping
+      ? `Got it! You can use ${OMISSIONS[omit].substitute} instead, otherwise updating the recipe...`
+      : (findAnswer(q, step.n)?.text ?? FALLBACK);
+
+    chatRef.current.push(
+      setTimeout(() => {
+        if (dropping) setOmitted((prev) => new Set(prev).add(omit));
+        setExchange({ you: q, reply });
+      }, REPLY_DELAY),
+    );
+
+    // dropping an ingredient is a decision, so the recipe carries on by itself
+    if (dropping) {
+      chatRef.current.push(
+        setTimeout(() => {
+          setExchange(null);
+          next();
+        }, REPLY_DELAY + ADVANCE_DELAY),
+      );
+    } else {
+      chatRef.current.push(
+        setTimeout(() => setExchange(null), REPLY_DELAY + EXCHANGE_LIFE),
+      );
+    }
   }
 
-  function listen() {
-    type SR = new () => {
-      lang: string;
-      start: () => void;
-      onresult: (e: { results: { 0: { 0: { transcript: string } } } }) => void;
-    };
-    const w = window as unknown as { SpeechRecognition?: SR; webkitSpeechRecognition?: SR };
-    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Ctor) {
-      showTip("This browser cannot listen. Type it instead.", false);
-      return;
-    }
-    const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.onresult = (e) => ask(e.results[0][0].transcript);
-    rec.start();
-  }
+  // a new step is a clean slate for the assistant zone
+  useEffect(() => {
+    setExchange(null);
+  }, [step]);
 
   // quantities named in this step, so the numbers sit next to the action
   const lower = text.toLowerCase();
@@ -153,10 +185,17 @@ function CookScreen() {
         </div>
       )}
 
+      {/* the counter lights up green while we are hunting for the station.
+          the panels above and below are opaque, so this reads as a wash over
+          the worktop itself. */}
+      {searching && (
+        <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#22c55e]/25" />
+      )}
+
       {/* recipe zone: current step only, never floating over the food */}
       <div className="absolute inset-x-0 top-0 h-[198.5px] rounded-b-[24px] bg-[#2f2f2f]/92 backdrop-blur-sm">
         <Image
-          src={recipe.image}
+          src={step.image ?? recipe.image}
           alt=""
           width={1200}
           height={1800}
@@ -182,7 +221,7 @@ function CookScreen() {
           &#8249;
         </button>
         <button
-          onClick={() => setIndex((i) => Math.min(i + 1, recipe.steps.length - 1))}
+          onClick={next}
           disabled={index === recipe.steps.length - 1}
           aria-label="next step"
           className="absolute right-0 top-1/2 flex h-12 w-10 -translate-y-1/2 items-center justify-center text-[26px] text-white disabled:opacity-25"
@@ -200,15 +239,24 @@ function CookScreen() {
         </div>
       )}
 
-      {/* assistant zone: one tip at a time, then the chat. anchored to the
+      {/* assistant zone: the last exchange, then the chat. anchored to the
           bottom at its traced 208.5px (874 - 665.5) so the chat bar stays on
           screen whatever the browser chrome does. that 208.5 is a minimum
           rather than a fixed height: a long answer grows the panel upward
           instead of being clipped behind the chat bar. */}
       <div className="absolute inset-x-0 bottom-0 min-h-[208.5px] rounded-t-[24px] bg-background pt-[25px] pb-[60px]">
-        <p className="mx-[32px] min-h-[42px] w-[340px] text-[16px] leading-[1.35]">
-          {feedback}
-        </p>
+        <div className="mx-[32px] min-h-[42px] w-[340px]">
+          {exchange ? (
+            <>
+              <p className="text-[13px] leading-[1.3] text-muted">{exchange.you}</p>
+              {exchange.reply && (
+                <p className="mt-[6px] text-[16px] leading-[1.35]">{exchange.reply}</p>
+              )}
+            </>
+          ) : (
+            <p className="text-[16px] leading-[1.35]">{feedback}</p>
+          )}
+        </div>
 
         <div className="mx-[32px] mt-[7.5px] flex h-[74px] w-[340px] items-center rounded-[20px] bg-field pl-[18px] pr-[15px]">
           <input
@@ -219,14 +267,12 @@ function CookScreen() {
             className="h-full flex-1 bg-transparent text-[16px] placeholder:text-muted focus:outline-none"
           />
           <button
-            onClick={listen}
-            aria-label="ask out loud"
-            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] bg-foreground text-background"
+            onClick={() => ask(draft)}
+            disabled={!draft.trim()}
+            aria-label="send"
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] bg-foreground text-[15px] font-semibold text-background disabled:opacity-25"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
-              <path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.09A6 6 0 0 0 18 11Z" />
-            </svg>
+            go
           </button>
         </div>
       </div>

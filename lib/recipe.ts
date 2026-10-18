@@ -27,6 +27,8 @@ export type Step = {
   station: Station;
   /** the one line shown in the recipe zone. short on purpose. */
   text: string;
+  /** shown in the recipe zone for this step, in place of the dish photo */
+  image?: string;
   /** replacement line once an ingredient has been dropped */
   textWithout?: Partial<Record<OmitKey, string>>;
   /** seconds, when the step is a wait worth timing */
@@ -63,12 +65,12 @@ export const STATION_LABEL: Record<Station, string> = {
  */
 export const OMISSIONS: Record<
   OmitKey,
-  { label: string; keywords: string[]; advice: string }
+  { label: string; keywords: string[]; substitute: string }
 > = {
   bellpepper: {
     label: "bell peppers",
     keywords: ["bell pepper", "bellpepper", "capsicum", "peppers", "pepper"],
-    advice: "Mushrooms or grated carrot work too.",
+    substitute: "mushrooms or grated carrot",
   },
 };
 
@@ -153,6 +155,7 @@ export const recipe: Recipe = {
     {
       n: 1,
       station: "board",
+      image: "/steps/chopped.webp",
       text: "Chop the onions, bell peppers and coriander.",
       textWithout: { bellpepper: "Chop the onions and coriander." },
       cue: "Small, even pieces cook through in the one minute they get.",
