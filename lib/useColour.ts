@@ -10,6 +10,9 @@ const FPS = 5;
 const AGREEMENT = 4;
 /** frames are scaled down to this width before averaging */
 const SAMPLE_WIDTH = 160;
+/** anything smaller is a placeholder stream, not a camera. a 2x2 black frame
+ *  reads as 100% dark, which would otherwise look exactly like the pan. */
+const MIN_FRAME = 64;
 
 /**
  * the zero-setup fallback: guess the station from the colour of the frame.
@@ -46,7 +49,8 @@ export function useColour(
       timer = setTimeout(loop, 1000 / FPS);
 
       const video = videoRef.current;
-      if (!video || !ctx || video.readyState < 2 || !video.videoWidth) return;
+      if (!video || !ctx || video.readyState < 2) return;
+      if (video.videoWidth < MIN_FRAME || video.videoHeight < MIN_FRAME) return;
 
       const scale = SAMPLE_WIDTH / video.videoWidth;
       canvas.width = SAMPLE_WIDTH;

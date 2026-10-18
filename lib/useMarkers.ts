@@ -10,6 +10,8 @@ const MISS_TOLERANCE = 8;
 const FPS = 6;
 /** frames are scaled down to this width before detection */
 const SAMPLE_WIDTH = 480;
+/** anything smaller is a placeholder stream rather than a real camera */
+const MIN_FRAME = 64;
 
 type Detector = { detect: (image: ImageData) => { id: number }[] };
 
@@ -58,7 +60,8 @@ export function useMarkers(
 
       const video = videoRef.current;
       if (!video || !detector || !ctx) return;
-      if (video.readyState < 2 || !video.videoWidth) return;
+      if (video.readyState < 2) return;
+      if (video.videoWidth < MIN_FRAME || video.videoHeight < MIN_FRAME) return;
 
       const scale = SAMPLE_WIDTH / video.videoWidth;
       canvas.width = SAMPLE_WIDTH;

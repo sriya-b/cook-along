@@ -75,22 +75,17 @@ function CookScreen() {
   );
 
   const seenRef = useRef(false);
+  const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // a new step forgets the last sighting and drops any advance still pending
   useEffect(() => {
     seenRef.current = false;
+    if (advanceRef.current) clearTimeout(advanceRef.current);
+    advanceRef.current = null;
+    return () => {
+      if (advanceRef.current) clearTimeout(advanceRef.current);
+    };
   }, [step]);
-
-  useEffect(() => {
-    if (!stationFound || seenRef.current) return;
-    seenRef.current = true;
-
-    const label = sentence(STATION_LABEL[step.station]);
-    showTip(step.confirm ?? `${label} detected. ${step.cue ?? ""}`.trim(), true);
-
-    // recognising the station is enough to finish some steps on its own
-    if (!step.advanceOnDetect) return;
-    const id = setTimeout(next, CONFIRM_DELAY);
-    return () => clearTimeout(id);
-  }, [stationFound, step, showTip, next]);
 
   // --- countdown for steps that are a wait --------------------------------
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -99,6 +94,22 @@ function CookScreen() {
     setRemaining(step.timer ?? null);
     showTip(step.cue ?? step.text, Boolean(step.timer));
   }, [step, showTip]);
+
+  // declared after the cue above so a confirmation is not overwritten by it
+  useEffect(() => {
+    if (!stationFound || seenRef.current) return;
+    seenRef.current = true;
+
+    const label = sentence(STATION_LABEL[step.station]);
+    showTip(step.confirm ?? `${label} detected. ${step.cue ?? ""}`.trim(), true);
+
+    // recognising the station is enough to finish some steps on its own.
+    // the timer is deliberately NOT cleaned up when stationFound changes:
+    // detection flickers as the phone moves, and a flicker inside this
+    // window used to cancel the advance for good.
+    if (!step.advanceOnDetect) return;
+    advanceRef.current = setTimeout(next, CONFIRM_DELAY);
+  }, [stationFound, step, showTip, next]);
 
   useEffect(() => {
     if (remaining === null || remaining <= 0) return;
