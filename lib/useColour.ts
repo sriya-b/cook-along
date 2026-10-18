@@ -21,6 +21,8 @@ export function useColour(
 ) {
   const [station, setStation] = useState<Station | null>(null);
   const [ready, setReady] = useState(false);
+  // read inside the loop without making the loop depend on it
+  const readyRef = useRef(false);
   const runRef = useRef<{ last: Station | null; count: number }>({
     last: null,
     count: 0,
@@ -28,6 +30,7 @@ export function useColour(
 
   useEffect(() => {
     if (!active) {
+      readyRef.current = false;
       setReady(false);
       return;
     }
@@ -58,7 +61,10 @@ export function useColour(
         return;
       }
 
-      if (!ready) setReady(true);
+      if (!readyRef.current) {
+        readyRef.current = true;
+        setReady(true);
+      }
 
       const run = runRef.current;
       if (guess === run.last) run.count += 1;
@@ -75,7 +81,7 @@ export function useColour(
       if (timer) clearTimeout(timer);
       runRef.current = { last: null, count: 0 };
     };
-  }, [active, videoRef, ready]);
+  }, [active, videoRef]);
 
   return { station, ready };
 }

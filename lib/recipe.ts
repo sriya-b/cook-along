@@ -37,6 +37,11 @@ export type Step = {
   heat?: Heat;
   /** what "done" looks like, for the assistant zone */
   cue?: string;
+  /** said instead of the cue once this step's station is recognised */
+  confirm?: string;
+  /** move straight on once the station is recognised. never on a timed step,
+   *  where the cook still has to stand and wait. */
+  advanceOnDetect?: boolean;
 };
 
 export type Recipe = {
@@ -166,6 +171,8 @@ export const recipe: Recipe = {
       image: "/steps/eggs.webp",
       text: "Crack the eggs into a bowl and whisk them well.",
       cue: "Whisk until the yolk and white are one colour, no streaks.",
+      confirm: "The eggs are whisked well!",
+      advanceOnDetect: true,
     },
     {
       n: 3,
@@ -183,6 +190,7 @@ export const recipe: Recipe = {
     {
       n: 5,
       station: "pan",
+      image: "/steps/pan-veg.webp",
       text: "Add the onions and peppers. Saute on high heat.",
       textWithout: { bellpepper: "Add the onions. Saute on high heat." },
       timer: 60,

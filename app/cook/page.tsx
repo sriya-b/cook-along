@@ -23,6 +23,8 @@ const REPLY_DELAY = 800;
 const ADVANCE_DELAY = 2600;
 /** an ordinary answer clears itself so the station line can come back */
 const EXCHANGE_LIFE = 9000;
+/** how long the confirmation is readable before a hands-free step moves on */
+const CONFIRM_DELAY = 2200;
 
 function mmss(total: number) {
   const m = Math.floor(total / 60);
@@ -67,6 +69,11 @@ function CookScreen() {
   // only claim to be looking when something can actually report a station
   const searching = state === "live" && ready && !stationFound;
 
+  const next = useCallback(
+    () => setIndex((i) => Math.min(i + 1, recipe.steps.length - 1)),
+    [],
+  );
+
   const seenRef = useRef(false);
   useEffect(() => {
     seenRef.current = false;
@@ -75,9 +82,15 @@ function CookScreen() {
   useEffect(() => {
     if (!stationFound || seenRef.current) return;
     seenRef.current = true;
+
     const label = sentence(STATION_LABEL[step.station]);
-    showTip(`${label} detected. ${step.cue ?? ""}`.trim(), Boolean(step.timer));
-  }, [stationFound, step, showTip]);
+    showTip(step.confirm ?? `${label} detected. ${step.cue ?? ""}`.trim(), true);
+
+    // recognising the station is enough to finish some steps on its own
+    if (!step.advanceOnDetect) return;
+    const id = setTimeout(next, CONFIRM_DELAY);
+    return () => clearTimeout(id);
+  }, [stationFound, step, showTip, next]);
 
   // --- countdown for steps that are a wait --------------------------------
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -108,11 +121,6 @@ function CookScreen() {
   }, []);
 
   useEffect(() => clearChatTimers, [clearChatTimers]);
-
-  const next = useCallback(
-    () => setIndex((i) => Math.min(i + 1, recipe.steps.length - 1)),
-    [],
-  );
 
   function ask(input: string) {
     const q = input.trim();

@@ -114,22 +114,31 @@ Delete `public/model/` and redeploy. The markers take over immediately.
 
 ## 3. Colour fallback (on by default)
 
-With nothing printed and no model trained, the app averages the middle of the
-frame and separates the stations on brightness and saturation alone. Measured
-from photographs of this kitchen:
+With nothing printed and no model trained, the app counts how many pixels in
+the middle half of the frame look a certain way. Measured from real frames of
+this kitchen:
 
-| Station | Brightness | Saturation | What makes it distinct |
+| Station | yellow fraction | dark fraction | what gives it away |
 |---|---|---|---|
-| cutting board | 0.72 | 0.20 | bright, washed out, warm |
-| pan | 0.37 | 0.15 | dark — about half the board |
-| mixing bowl | 0.86 | 0.62 | bright *and* strongly yellow |
+| cutting board | 0.00 | 0.06 | pale wood, nothing dark or yellow |
+| pan | 0.00 | 0.46 | the dark pan and the black grates |
+| mixing bowl | 0.62 | 0.05 | beaten egg fills the middle |
 
-Two thresholds split all three, in `lib/stationColour.ts`:
+Thresholds live in `lib/stationColour.ts`: `YELLOW_FRACTION = 0.15` and
+`DARK_FRACTION = 0.25`, both sitting in the wide gaps above. Four frames have
+to agree before the station changes.
 
-- `DARK = 0.5` — below this it is the pan rather than the board
-- `YELLOW = 0.4` with `YELLOW_MIN_VALUE = 0.6` — above both it is beaten egg
+### Why fractions and not averages
 
-Four frames have to agree before the station changes.
+The first version averaged the colour of the frame and asked whether the mean
+was saturated enough. It failed on a real frame that was 64% beaten egg: the
+white bowl and the pale counter around it dragged the mean saturation below
+the threshold, so the bowl was never recognised. Counting how many pixels are
+egg-yellow does not have that problem.
+
+Note the camera frame is wider than what you see. The video is `object-cover`,
+so the phone crops the sides away; the sampling window is deliberately the
+middle half rather than the whole frame for that reason.
 
 **This is a stopgap, not a classifier.** It keys on how these three things
 happen to photograph in this kitchen's light. Demo somewhere much brighter and
