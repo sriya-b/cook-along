@@ -15,8 +15,7 @@ import {
 import { scaledQuantity } from "@/lib/scale";
 import { findAnswer, FALLBACK } from "@/lib/knowledge";
 import { useCamera } from "@/lib/useCamera";
-import { useMarkers } from "@/lib/useMarkers";
-import { STATION_MARKER } from "@/lib/markers";
+import { useStation } from "@/lib/useStation";
 
 function mmss(total: number) {
   const m = Math.floor(total / 60);
@@ -52,10 +51,10 @@ function CookScreen() {
     if (!sticky) fadeRef.current = setTimeout(() => setTip(null), 6000);
   }, []);
 
-  // --- station markers -----------------------------------------------------
-  const { visible, ready } = useMarkers(videoRef, state === "live");
-  const stationFound = visible.has(STATION_MARKER[step.station]);
-  // only claim to be looking when there is a detector and a picture to search
+  // --- which station are we pointed at --------------------------------------
+  const { at, ready } = useStation(videoRef, state === "live");
+  const stationFound = at(step.station) !== null;
+  // only claim to be looking when something can actually report a station
   const searching = state === "live" && ready && !stationFound;
 
   const seenRef = useRef(false);
