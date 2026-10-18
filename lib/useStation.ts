@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { Station } from "./recipe";
 import { STATION_MARKER } from "./markers";
 import { useMarkers } from "./useMarkers";
+import { useColour } from "./useColour";
 
 /** where the current station reading came from */
-export type StationSource = "model" | "marker";
+export type StationSource = "model" | "marker" | "colour";
 
 /** teachable machine export lives here. absent until one is trained. */
 const MODEL_URL = "/model/model.json";
@@ -46,6 +47,7 @@ export function useStation(
   active: boolean,
 ) {
   const markers = useMarkers(videoRef, active);
+  const colour = useColour(videoRef, active);
   const [modelStation, setModelStation] = useState<Station | null>(null);
   const [modelReady, setModelReady] = useState(false);
   const runRef = useRef<{ last: Station | null; count: number }>({
@@ -130,16 +132,20 @@ export function useStation(
     };
   }, [active, videoRef]);
 
-  /** is this the station in front of us, by either route? */
+  /** is this the station in front of us, by any of the three routes? */
   function at(station: Station): StationSource | null {
+    // a trained model knows this kitchen, so it outranks everything
     if (modelReady && modelStation === station) return "model";
+    // a marker actually in shot is next most trustworthy
     if (markers.ready && markers.visible.has(STATION_MARKER[station])) return "marker";
+    // colour only gets a say when neither of the above is available
+    if (!modelReady && colour.ready && colour.station === station) return "colour";
     return null;
   }
 
   return {
     at,
-    /** true once at least one of the two can actually report something */
-    ready: modelReady || markers.ready,
+    /** true once any backend can actually report something */
+    ready: modelReady || markers.ready || colour.ready,
   };
 }

@@ -163,6 +163,7 @@ export const recipe: Recipe = {
     {
       n: 2,
       station: "bowl",
+      image: "/steps/eggs.webp",
       text: "Crack the eggs into a bowl and whisk them well.",
       cue: "Whisk until the yolk and white are one colour, no streaks.",
     },

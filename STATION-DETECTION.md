@@ -3,18 +3,18 @@
 The cook screen needs to know which station the phone is pointed at —
 cutting board, mixing bowl or pan — so it can say so in the feedback window.
 
-There are two ways it can tell, and both run at once.
+There are three ways it can tell, and they are tried in that order.
 
-| | Printed markers | Trained pictures |
-|---|---|---|
-| Reliability | Near perfect, any lighting | Good, but lighting and clutter matter |
-| Setup | Print and tape | ~30 min of photos and training |
-| Demo feel | Paper squares on the counter | Point at the real pan, it just knows |
-| Status | **Working now** | Add the model and it switches on |
+| | Trained pictures | Printed markers | Colour fallback |
+|---|---|---|---|
+| Reliability | Good, lighting and clutter matter | Near perfect, any lighting | Rough; one bright lamp can fool it |
+| Setup | ~30 min of photos and training | Print and tape | **None** |
+| Demo feel | Point at the real pan | Paper squares on the counter | Point at the real pan |
+| Status | Add the model to switch on | Print to switch on | **Working now** |
 
-The app prefers the trained model when one is present and falls back to the
-markers when it is not confident. Nothing breaks if you never train a model —
-that is the state the repo ships in.
+A trained model outranks everything, because it knows this kitchen. A marker
+actually in shot comes next. Colour only gets a say when no model is
+installed, so it is what runs out of the box with nothing set up.
 
 ---
 
@@ -109,3 +109,29 @@ both work, but `chopping surface` would not.
 ### If it misreads on the day
 
 Delete `public/model/` and redeploy. The markers take over immediately.
+
+---
+
+## 3. Colour fallback (on by default)
+
+With nothing printed and no model trained, the app averages the middle of the
+frame and separates the stations on brightness and saturation alone. Measured
+from photographs of this kitchen:
+
+| Station | Brightness | Saturation | What makes it distinct |
+|---|---|---|---|
+| cutting board | 0.72 | 0.20 | bright, washed out, warm |
+| pan | 0.37 | 0.15 | dark — about half the board |
+| mixing bowl | 0.86 | 0.62 | bright *and* strongly yellow |
+
+Two thresholds split all three, in `lib/stationColour.ts`:
+
+- `DARK = 0.5` — below this it is the pan rather than the board
+- `YELLOW = 0.4` with `YELLOW_MIN_VALUE = 0.6` — above both it is beaten egg
+
+Four frames have to agree before the station changes.
+
+**This is a stopgap, not a classifier.** It keys on how these three things
+happen to photograph in this kitchen's light. Demo somewhere much brighter and
+the pan can cross the `DARK` threshold and start reading as the board; tune the
+two constants if so. Train a model before it matters.

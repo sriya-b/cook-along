@@ -189,7 +189,7 @@ function CookScreen() {
           the panels above and below are opaque, so this reads as a wash over
           the worktop itself. */}
       {searching && (
-        <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#22c55e]/25" />
+        <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#22c55e]/45" />
       )}
 
       {/* recipe zone: current step only, never floating over the food */}
@@ -204,7 +204,7 @@ function CookScreen() {
 
         <div className="absolute left-[212px] top-[33px] w-[150px] text-white">
           <p className="text-[18px] font-semibold leading-tight">
-            step {step.n}/{recipe.steps.length}
+            Step {step.n}/{recipe.steps.length}
           </p>
           <p className="mt-[8px] text-[15px] leading-[1.35]">{text}</p>
           {quantities && (
