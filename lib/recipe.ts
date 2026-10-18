@@ -39,6 +39,9 @@ export type Step = {
   cue?: string;
   /** said instead of the cue once this step's station is recognised */
   confirm?: string;
+  /** put this question to the cook when the station is recognised, instead
+   *  of a plain confirmation. answering yes drops the ingredient. */
+  askAbout?: OmitKey;
   /** move straight on once the station is recognised. never on a timed step,
    *  where the cook still has to stand and wait. */
   advanceOnDetect?: boolean;
@@ -70,12 +73,14 @@ export const STATION_LABEL: Record<Station, string> = {
  */
 export const OMISSIONS: Record<
   OmitKey,
-  { label: string; keywords: string[]; substitute: string }
+  { label: string; keywords: string[]; substitute: string; question: string }
 > = {
   bellpepper: {
     label: "bell peppers",
     keywords: ["bell pepper", "bellpepper", "capsicum", "peppers", "pepper"],
     substitute: "mushrooms or grated carrot",
+    question:
+      "I don't see any bell peppers. Do you want to move on without them?",
   },
 };
 
@@ -95,6 +100,23 @@ const LACK = [
   "havent",
   "forgot",
 ];
+
+const YES = [
+  "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "fine", "please",
+  "move on", "go ahead", "go on", "carry on", "without", "skip", "do it",
+  "correct", "right", "true",
+];
+const NO = ["no", "nope", "nah", "i have", "i do have", "i've got", "keep", "wait", "stop"];
+
+/** did the cook just agree to the question we put to them? */
+export function readAnswer(query: string): boolean | null {
+  const q = ` ${query.toLowerCase().replace(/[^a-z' ]/g, " ")} `;
+  const hit = (list: string[]) => list.some((w) => q.includes(` ${w} `));
+  // "no" is checked first so "no, i have some" is not read as a yes
+  if (hit(NO)) return false;
+  if (hit(YES)) return true;
+  return null;
+}
 
 /** the omission the cook just described, if any */
 export function findOmission(query: string): OmitKey | null {
@@ -163,6 +185,7 @@ export const recipe: Recipe = {
       image: "/steps/chopped.webp",
       text: "Chop the onions, bell peppers and coriander.",
       textWithout: { bellpepper: "Chop the onions and coriander." },
+      askAbout: "bellpepper",
       cue: "Small, even pieces cook through in the one minute they get.",
     },
     {
@@ -171,7 +194,7 @@ export const recipe: Recipe = {
       image: "/steps/eggs.webp",
       text: "Crack the eggs into a bowl and whisk them well.",
       cue: "Whisk until the yolk and white are one colour, no streaks.",
-      confirm: "The eggs are whisked well!",
+      confirm: "Looks good, the eggs are whisked well.",
       advanceOnDetect: true,
     },
     {
@@ -179,11 +202,14 @@ export const recipe: Recipe = {
       station: "bowl",
       text: "Add the salt and coriander to the eggs.",
       cue: "Go light on salt here. The cheese brings plenty of its own.",
+      confirm: "Salt and coriander in. That is the bowl done — over to the pan.",
+      advanceOnDetect: true,
     },
     {
       n: 4,
       station: "pan",
       text: "Heat the oil in a pan until just hot.",
+      confirm: "Pan it is. Just hot, not smoking — the oil should shimmer.",
       heat: "medium",
       cue: "Just hot, not smoking. The oil should shimmer, not haze.",
     },

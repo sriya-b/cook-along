@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   recipe,
   findOmission,
+  readAnswer,
   stepText,
   visibleIngredients,
   OMISSIONS,
@@ -50,6 +51,8 @@ function CookScreen() {
 
   // --- ingredients the cook has told us they do not have -------------------
   const [omitted, setOmitted] = useState<Set<OmitKey>>(new Set());
+  /** a question we have put to the cook and are waiting on */
+  const [pending, setPending] = useState<OmitKey | null>(null);
   const text = stepText(step, omitted);
 
   // --- the one tip in the assistant zone ---------------------------------
@@ -100,6 +103,14 @@ function CookScreen() {
     if (!stationFound || seenRef.current) return;
     seenRef.current = true;
 
+    // some steps put a question instead of a confirmation, and then wait
+    const asking = step.askAbout;
+    if (asking && !omitted.has(asking)) {
+      showTip(OMISSIONS[asking].question, true);
+      setPending(asking);
+      return;
+    }
+
     const label = sentence(STATION_LABEL[step.station]);
     showTip(step.confirm ?? `${label} detected. ${step.cue ?? ""}`.trim(), true);
 
@@ -109,7 +120,7 @@ function CookScreen() {
     // window used to cancel the advance for good.
     if (!step.advanceOnDetect) return;
     advanceRef.current = setTimeout(next, CONFIRM_DELAY);
-  }, [stationFound, step, showTip, next]);
+  }, [stationFound, step, showTip, next, omitted]);
 
   useEffect(() => {
     if (remaining === null || remaining <= 0) return;
@@ -142,9 +153,28 @@ function CookScreen() {
     // the cook's own line goes up first, then the answer lands after it
     setExchange({ you: q, reply: null });
 
-    // "I don't have bell peppers" rewrites the recipe rather than answering
-    const omit = findOmission(q);
+    // answering the question we just put to them takes priority, so a bare
+    // "yes" means yes to that rather than nothing at all
+    const answer = pending ? readAnswer(q) : null;
+    if (pending && answer === false) {
+      setPending(null);
+      chatRef.current.push(
+        setTimeout(
+          () =>
+            setExchange({
+              you: q,
+              reply: `Keeping the ${OMISSIONS[pending].label} in, then. ${step.cue ?? ""}`.trim(),
+            }),
+          REPLY_DELAY,
+        ),
+      );
+      return;
+    }
+
+    // either they said yes to the question, or told us outright
+    const omit = pending && answer === true ? pending : findOmission(q);
     const dropping = omit !== null && !omitted.has(omit);
+    if (dropping) setPending(null);
 
     const reply = dropping
       ? `Got it! You can use ${OMISSIONS[omit].substitute} instead, otherwise updating the recipe...`
@@ -175,6 +205,7 @@ function CookScreen() {
   // a new step is a clean slate for the assistant zone
   useEffect(() => {
     setExchange(null);
+    setPending(null);
   }, [step]);
 
   // quantities named in this step, so the numbers sit next to the action
@@ -184,8 +215,12 @@ function CookScreen() {
     .map((i) => `${scaledQuantity(i, servings, recipe.baseServings)} ${i.item}`.trim())
     .join(" · ");
 
-  // the station line takes over the assistant zone while we are still looking
-  const feedback = searching ? `Detecting ${STATION_LABEL[step.station]}...` : tip;
+  // there is always something in the assistant zone: the station line while
+  // we are looking, then whatever was last said, and the step's own cue
+  // underneath that, so a faded tip never leaves the panel empty.
+  const feedback = searching
+    ? `Detecting ${STATION_LABEL[step.station]}...`
+    : (tip ?? step.cue ?? text);
 
   return (
     // 100dvh, not inset-0: safari's toolbar shrinks the visible viewport and
