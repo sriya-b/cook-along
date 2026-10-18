@@ -11,18 +11,23 @@ import type { Station } from "./recipe";
  *
  * measured from frames of this kitchen, sampling the middle half:
  *
- *            yellow   dark
- *   board     0.00    0.07     pale wood, nothing dark, nothing yellow
- *   pan       0.00    0.43     the dark pan and the black grates
- *   bowl      0.64    0.04     beaten egg fills the middle
+ *            wood   yellow   dark
+ *   board     0.70    0.00    0.07
+ *   pan       0.29    0.00    0.43
+ *   bowl      0.13    0.64    0.04
  *
- * the thresholds sit in the wide gaps between those columns.
+ * the thresholds sit in the wide gaps between those columns. note the board
+ * has to be recognised on its own evidence rather than being what is left
+ * over: treating it as the fallthrough made every wall, hand and worktop
+ * read as the cutting board, so step one confirmed the moment it opened.
  */
 
 /** this much of the middle being egg-yellow means the mixing bowl */
 export const YELLOW_FRACTION = 0.15;
 /** ...and this much being dark means the pan */
 export const DARK_FRACTION = 0.25;
+/** ...and this much pale warm wood means the cutting board */
+export const WOOD_FRACTION = 0.45;
 
 /** a pixel this dark counts toward the pan */
 const DARK_VALUE = 0.35;
@@ -31,10 +36,17 @@ const EGG_HUE = [0.08, 0.19] as const;
 const EGG_MIN_SAT = 0.45;
 const EGG_MIN_VALUE = 0.5;
 
+/** pale warm wood: a warm hue, gently coloured, and clearly lit. the lower
+ *  bound is deliberately above skin tone, which otherwise sits inside this
+ *  band and makes a hand over the counter read as the board. */
+const WOOD_HUE = [0.07, 0.17] as const;
+const WOOD_SAT = [0.1, 0.45] as const;
+const WOOD_VALUE = [0.45, 0.97] as const;
+
 /** how much of the frame to look at, as a fraction of each side */
 export const WINDOW = 0.5;
 
-export type Reading = { yellow: number; dark: number };
+export type Reading = { yellow: number; dark: number; wood: number };
 
 function hsv(r: number, g: number, b: number) {
   const max = Math.max(r, g, b);
@@ -61,6 +73,7 @@ export function readCentre(data: Uint8ClampedArray, w: number, h: number): Readi
 
   let yellow = 0;
   let dark = 0;
+  let wood = 0;
   let n = 0;
 
   for (let y = y0; y < y1; y++) {
@@ -72,16 +85,26 @@ export function readCentre(data: Uint8ClampedArray, w: number, h: number): Readi
       if (hue >= EGG_HUE[0] && hue <= EGG_HUE[1] && s > EGG_MIN_SAT && v > EGG_MIN_VALUE) {
         yellow++;
       }
+      if (
+        hue >= WOOD_HUE[0] && hue <= WOOD_HUE[1] &&
+        s >= WOOD_SAT[0] && s <= WOOD_SAT[1] &&
+        v >= WOOD_VALUE[0] && v <= WOOD_VALUE[1]
+      ) {
+        wood++;
+      }
     }
   }
 
-  if (!n) return { yellow: 0, dark: 0 };
-  return { yellow: yellow / n, dark: dark / n };
+  if (!n) return { yellow: 0, dark: 0, wood: 0 };
+  return { yellow: yellow / n, dark: dark / n, wood: wood / n };
 }
 
-export function classify({ yellow, dark }: Reading): Station | null {
+export function classify({ yellow, dark, wood }: Reading): Station | null {
   // egg wins first: a bowl sitting on the dark hob is still a bowl
   if (yellow > YELLOW_FRACTION) return "bowl";
   if (dark > DARK_FRACTION) return "pan";
-  return "board";
+  if (wood > WOOD_FRACTION) return "board";
+  // nothing recognised. saying so keeps the screen honestly searching
+  // rather than naming whichever station was hardest to rule out.
+  return null;
 }

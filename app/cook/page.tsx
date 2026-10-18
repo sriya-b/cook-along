@@ -12,6 +12,7 @@ import {
   OMISSIONS,
   STATION_LABEL,
   type OmitKey,
+  type Step,
 } from "@/lib/recipe";
 import { scaledQuantity } from "@/lib/scale";
 import { findAnswer, FALLBACK } from "@/lib/knowledge";
@@ -26,6 +27,10 @@ const ADVANCE_DELAY = 2600;
 const EXCHANGE_LIFE = 9000;
 /** how long the confirmation is readable before a hands-free step moves on */
 const CONFIRM_DELAY = 2200;
+/** every step spends at least this long visibly looking for its station,
+ *  so the green wash and the "Detecting..." line are always seen before
+ *  anything is said about the station. */
+const MIN_SEARCH = 2000;
 
 function mmss(total: number) {
   const m = Math.floor(total / 60);
@@ -68,7 +73,19 @@ function CookScreen() {
 
   // --- which station are we pointed at --------------------------------------
   const { at, ready } = useStation(videoRef, state === "live");
-  const stationFound = at(step.station) !== null;
+
+  // a step is not allowed to recognise its station instantly: the cook needs
+  // to see it looking before it speaks. this holds the step that has served
+  // its time rather than a flag, because a flag reset inside an effect is
+  // still set from the previous step on the first render of the new one,
+  // which let a step confirm and move on before it had looked at anything.
+  const [armedStep, setArmedStep] = useState<Step | null>(null);
+  useEffect(() => {
+    const id = setTimeout(() => setArmedStep(step), MIN_SEARCH);
+    return () => clearTimeout(id);
+  }, [step]);
+
+  const stationFound = armedStep === step && at(step.station) !== null;
   // only claim to be looking when something can actually report a station
   const searching = state === "live" && ready && !stationFound;
 
