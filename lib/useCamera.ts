@@ -20,7 +20,7 @@ export function useCamera() {
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
         setState("unavailable");
-        setMessage("this browser cannot open a camera.");
+        setMessage("This browser cannot open a camera.");
         return;
       }
       setState("starting");
@@ -44,10 +44,10 @@ export function useCamera() {
         const name = err instanceof DOMException ? err.name : "";
         if (name === "NotAllowedError" || name === "SecurityError") {
           setState("denied");
-          setMessage("camera access is off. turn it on to cook along.");
+          setMessage("Camera access is off. Turn it on to cook along.");
         } else {
           setState("unavailable");
-          setMessage("no camera found on this device.");
+          setMessage("No camera found on this device.");
         }
       }
     }

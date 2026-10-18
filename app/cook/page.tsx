@@ -3,15 +3,30 @@
 import Image from "next/image";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { recipe } from "@/lib/recipe";
+import {
+  recipe,
+  findOmission,
+  stepText,
+  visibleIngredients,
+  OMISSIONS,
+  STATION_LABEL,
+  type OmitKey,
+} from "@/lib/recipe";
 import { scaledQuantity } from "@/lib/scale";
 import { findAnswer, FALLBACK } from "@/lib/knowledge";
 import { useCamera } from "@/lib/useCamera";
+import { useMarkers } from "@/lib/useMarkers";
+import { STATION_MARKER } from "@/lib/markers";
 
 function mmss(total: number) {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** "cutting board" -> "Cutting board", for the start of a sentence */
+function sentence(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function CookScreen() {
@@ -21,6 +36,10 @@ function CookScreen() {
   const { videoRef, state, message } = useCamera();
   const [index, setIndex] = useState(0);
   const step = recipe.steps[index];
+
+  // --- ingredients the cook has told us they do not have -------------------
+  const [omitted, setOmitted] = useState<Set<OmitKey>>(new Set());
+  const text = stepText(step, omitted);
 
   // --- the one tip in the assistant zone ---------------------------------
   const [tip, setTip] = useState<string | null>(null);
@@ -32,6 +51,24 @@ function CookScreen() {
     // tips fade after a few seconds unless they need action, like a timer
     if (!sticky) fadeRef.current = setTimeout(() => setTip(null), 6000);
   }, []);
+
+  // --- station markers -----------------------------------------------------
+  const { visible, ready } = useMarkers(videoRef, state === "live");
+  const stationFound = visible.has(STATION_MARKER[step.station]);
+  // only claim to be looking when there is a detector and a picture to search
+  const searching = state === "live" && ready && !stationFound;
+
+  const seenRef = useRef(false);
+  useEffect(() => {
+    seenRef.current = false;
+  }, [step]);
+
+  useEffect(() => {
+    if (!stationFound || seenRef.current) return;
+    seenRef.current = true;
+    const label = sentence(STATION_LABEL[step.station]);
+    showTip(`${label} detected. ${step.cue ?? ""}`.trim(), Boolean(step.timer));
+  }, [stationFound, step, showTip]);
 
   // --- countdown for steps that are a wait --------------------------------
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -48,18 +85,28 @@ function CookScreen() {
   }, [remaining]);
 
   useEffect(() => {
-    if (remaining === 0) showTip("that is time. take a look before you move on.", true);
+    if (remaining === 0) showTip("That is time. Take a look before you move on.", true);
   }, [remaining, showTip]);
 
   // --- chat ---------------------------------------------------------------
   const [draft, setDraft] = useState("");
 
-  function ask(text: string) {
-    const q = text.trim();
+  function ask(input: string) {
+    const q = input.trim();
     if (!q) return;
+    setDraft("");
+
+    // "I don't have bell peppers" rewrites the recipe rather than answering
+    const omit = findOmission(q);
+    if (omit && !omitted.has(omit)) {
+      const { label, advice } = OMISSIONS[omit];
+      setOmitted((prev) => new Set(prev).add(omit));
+      showTip(`Updating recipe without ${label}. ${advice}`, true);
+      return;
+    }
+
     const hit = findAnswer(q, step.n);
     showTip(hit ? hit.text : FALLBACK, true);
-    setDraft("");
   }
 
   function listen() {
@@ -71,7 +118,7 @@ function CookScreen() {
     const w = window as unknown as { SpeechRecognition?: SR; webkitSpeechRecognition?: SR };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Ctor) {
-      showTip("this browser cannot listen. type it instead.", false);
+      showTip("This browser cannot listen. Type it instead.", false);
       return;
     }
     const rec = new Ctor();
@@ -81,13 +128,19 @@ function CookScreen() {
   }
 
   // quantities named in this step, so the numbers sit next to the action
-  const quantities = recipe.ingredients
-    .filter((i) => step.text.includes(i.item.split(" ")[0]))
+  const lower = text.toLowerCase();
+  const quantities = visibleIngredients(recipe.ingredients, omitted)
+    .filter((i) => lower.includes(i.item.split(" ")[0].toLowerCase()))
     .map((i) => `${scaledQuantity(i, servings, recipe.baseServings)} ${i.item}`.trim())
     .join(" · ");
 
+  // the station line takes over the assistant zone while we are still looking
+  const feedback = searching ? `Detecting ${STATION_LABEL[step.station]}...` : tip;
+
   return (
-    <div className="fixed inset-0 overflow-hidden bg-black">
+    // 100dvh, not inset-0: safari's toolbar shrinks the visible viewport and
+    // would otherwise push the assistant zone off the bottom of the screen.
+    <div className="fixed inset-x-0 top-0 h-[100dvh] overflow-hidden bg-black">
       {/* the live counter. everything else is a fixed panel over it. */}
       <video
         ref={videoRef}
@@ -97,7 +150,7 @@ function CookScreen() {
       />
       {state !== "live" && (
         <div className="absolute inset-0 flex items-center justify-center px-10 text-center text-[15px] text-white/70">
-          {message ?? "opening the camera..."}
+          {message ?? "Opening the camera..."}
         </div>
       )}
 
@@ -115,7 +168,7 @@ function CookScreen() {
           <p className="text-[18px] font-semibold leading-tight">
             step {step.n}/{recipe.steps.length}
           </p>
-          <p className="mt-[8px] text-[15px] leading-[1.35]">{step.text}</p>
+          <p className="mt-[8px] text-[15px] leading-[1.35]">{text}</p>
           {quantities && (
             <p className="mt-[6px] text-[12px] leading-[1.3] text-white/70">{quantities}</p>
           )}
@@ -148,13 +201,17 @@ function CookScreen() {
         </div>
       )}
 
-      {/* assistant zone: one tip at a time, then the chat */}
-      <div className="absolute inset-x-0 bottom-0 top-[665.5px] rounded-t-[24px] bg-background">
-        <p className="absolute left-[32px] top-[25px] w-[340px] text-[16px] leading-[1.35]">
-          {tip}
+      {/* assistant zone: one tip at a time, then the chat. anchored to the
+          bottom at its traced 208.5px (874 - 665.5) so the chat bar stays on
+          screen whatever the browser chrome does. that 208.5 is a minimum
+          rather than a fixed height: a long answer grows the panel upward
+          instead of being clipped behind the chat bar. */}
+      <div className="absolute inset-x-0 bottom-0 min-h-[208.5px] rounded-t-[24px] bg-background pt-[25px] pb-[60px]">
+        <p className="mx-[32px] min-h-[42px] w-[340px] text-[16px] leading-[1.35]">
+          {feedback}
         </p>
 
-        <div className="absolute left-[32px] top-[74.5px] flex h-[74px] w-[340px] items-center rounded-[20px] bg-field pl-[18px] pr-[15px]">
+        <div className="mx-[32px] mt-[7.5px] flex h-[74px] w-[340px] items-center rounded-[20px] bg-field pl-[18px] pr-[15px]">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

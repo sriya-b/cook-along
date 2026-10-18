@@ -4,6 +4,9 @@
 
 export type Station = "board" | "bowl" | "pan";
 
+/** ingredients the cook can tell us they do not have, mid-recipe */
+export type OmitKey = "bellpepper";
+
 export type Ingredient = {
   /** null for things measured by feel, like a pinch of salt */
   amount: number | null;
@@ -11,6 +14,10 @@ export type Ingredient = {
   item: string;
   /** shown smaller, never scaled */
   note?: string;
+  /** when this key is omitted, the line changes or disappears */
+  omitKey?: OmitKey;
+  /** the line reads this instead of dropping out entirely */
+  itemWithout?: string;
 };
 
 export type Heat = "off" | "low" | "medium" | "high";
@@ -20,6 +27,8 @@ export type Step = {
   station: Station;
   /** the one line shown in the recipe zone. short on purpose. */
   text: string;
+  /** replacement line once an ingredient has been dropped */
+  textWithout?: Partial<Record<OmitKey, string>>;
   /** seconds, when the step is a wait worth timing */
   timer?: number;
   /** burner setting for this step. drives the heat tip. */
@@ -47,6 +56,72 @@ export const STATION_LABEL: Record<Station, string> = {
   pan: "pan",
 };
 
+/**
+ * what the assistant says when the cook drops an ingredient. the keywords
+ * only count as "I do not have this" when they land next to one of the
+ * LACK phrases below, so "add the peppers" never triggers a rewrite.
+ */
+export const OMISSIONS: Record<
+  OmitKey,
+  { label: string; keywords: string[]; advice: string }
+> = {
+  bellpepper: {
+    label: "bell peppers",
+    keywords: ["bell pepper", "bellpepper", "capsicum", "peppers", "pepper"],
+    advice: "Mushrooms or grated carrot work too.",
+  },
+};
+
+const LACK = [
+  "no ",
+  "don't have",
+  "dont have",
+  "do not have",
+  "didn't get",
+  "didnt get",
+  "without",
+  "out of",
+  "skip",
+  "ran out",
+  "missing",
+  "haven't",
+  "havent",
+  "forgot",
+];
+
+/** the omission the cook just described, if any */
+export function findOmission(query: string): OmitKey | null {
+  const q = query.toLowerCase();
+  if (!LACK.some((l) => q.includes(l))) return null;
+  for (const key of Object.keys(OMISSIONS) as OmitKey[]) {
+    if (OMISSIONS[key].keywords.some((k) => q.includes(k))) return key;
+  }
+  return null;
+}
+
+/** the step line, rewritten for whatever has been dropped */
+export function stepText(step: Step, omitted: ReadonlySet<OmitKey>): string {
+  for (const key of omitted) {
+    const alt = step.textWithout?.[key];
+    if (alt) return alt;
+  }
+  return step.text;
+}
+
+/** the ingredient list, rewritten for whatever has been dropped */
+export function visibleIngredients(
+  ingredients: Ingredient[],
+  omitted: ReadonlySet<OmitKey>,
+): Ingredient[] {
+  return ingredients
+    .map((i) => {
+      if (!i.omitKey || !omitted.has(i.omitKey)) return i;
+      if (!i.itemWithout) return null;
+      return { ...i, item: i.itemWithout };
+    })
+    .filter((i): i is Ingredient => i !== null);
+}
+
 export const recipe: Recipe = {
   title: "cheese omelette",
   sourceName: "Cheese Omelette Recipe - Swasthi’s Recipes",
@@ -58,7 +133,14 @@ export const recipe: Recipe = {
   cookMinutes: 3,
   ingredients: [
     { amount: 2, unit: "", item: "eggs" },
-    { amount: 0.25, unit: "cup", item: "onions and bell peppers", note: "heaped" },
+    {
+      amount: 0.25,
+      unit: "cup",
+      item: "onions and bell peppers",
+      note: "heaped",
+      omitKey: "bellpepper",
+      itemWithout: "onions",
+    },
     { amount: 0.25, unit: "cup", item: "cheese", note: "cheddar or mozzarella" },
     { amount: 1.25, unit: "tsp", item: "oil" },
     { amount: null, unit: "", item: "salt", note: "a little, cheese is salty" },
@@ -71,65 +153,67 @@ export const recipe: Recipe = {
     {
       n: 1,
       station: "board",
-      text: "chop the onions, bell peppers and coriander.",
-      cue: "small, even pieces cook through in the one minute they get.",
+      text: "Chop the onions, bell peppers and coriander.",
+      textWithout: { bellpepper: "Chop the onions and coriander." },
+      cue: "Small, even pieces cook through in the one minute they get.",
     },
     {
       n: 2,
       station: "bowl",
-      text: "crack the eggs into a bowl and whisk them well.",
-      cue: "whisk until the yolk and white are one colour, no streaks.",
+      text: "Crack the eggs into a bowl and whisk them well.",
+      cue: "Whisk until the yolk and white are one colour, no streaks.",
     },
     {
       n: 3,
       station: "bowl",
-      text: "add the salt and coriander to the eggs.",
-      cue: "go light on salt here. the cheese brings plenty of its own.",
+      text: "Add the salt and coriander to the eggs.",
+      cue: "Go light on salt here. The cheese brings plenty of its own.",
     },
     {
       n: 4,
       station: "pan",
-      text: "heat the oil in a pan until just hot.",
+      text: "Heat the oil in a pan until just hot.",
       heat: "medium",
-      cue: "just hot, not smoking. the oil should shimmer, not haze.",
+      cue: "Just hot, not smoking. The oil should shimmer, not haze.",
     },
     {
       n: 5,
       station: "pan",
-      text: "add the onions and peppers. saute on high heat.",
+      text: "Add the onions and peppers. Saute on high heat.",
+      textWithout: { bellpepper: "Add the onions. Saute on high heat." },
       timer: 60,
       heat: "high",
-      cue: "the onions turn glassy at the edges. one minute is enough.",
+      cue: "The onions turn glassy at the edges. One minute is enough.",
     },
     {
       n: 6,
       station: "pan",
-      text: "stir in the spices and spread it all evenly.",
+      text: "Stir in the spices and spread it all evenly.",
       heat: "high",
-      cue: "spread it flat so the egg sets in one even layer.",
+      cue: "Spread it flat so the egg sets in one even layer.",
     },
     {
       n: 7,
       station: "pan",
-      text: "lower the heat, pour in the eggs. cook until the base sets, then flip.",
+      text: "Lower the heat, pour in the eggs. Cook until the base sets, then flip.",
       timer: 90,
       heat: "medium",
-      cue: "the base is set when the edges lift cleanly and the top is no longer runny.",
+      cue: "The base is set when the edges lift cleanly and the top is no longer runny.",
     },
     {
       n: 8,
       station: "pan",
-      text: "sprinkle the grated cheese over the top.",
+      text: "Sprinkle the grated cheese over the top.",
       heat: "low",
-      cue: "both sides should be cooked before the cheese goes on.",
+      cue: "Both sides should be cooked before the cheese goes on.",
     },
     {
       n: 9,
       station: "pan",
-      text: "fold it in half and cook on low until the cheese melts.",
+      text: "Fold it in half and cook on low until the cheese melts.",
       timer: 30,
       heat: "low",
-      cue: "low heat only. high heat browns the outside before the cheese gives.",
+      cue: "Low heat only. High heat browns the outside before the cheese gives.",
     },
   ],
 };
