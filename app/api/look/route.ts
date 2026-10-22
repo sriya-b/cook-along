@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import { recipe, STATION_LABEL } from "@/lib/recipe";
 import { isLookResult, type LookRequest, type LookResult } from "@/lib/vision";
 
-// the alias tracks the current flash model, so this does not go stale
-const MODEL = "gemini-flash-lite-latest";
+// pinned, not the "-latest" alias: an alias can be repointed by google at any
+// time, which would silently change behaviour mid-demo. the alias resolved to
+// this exact model when it was checked on 2026-10-21.
+const MODEL = "gemini-3.5-flash-lite";
 
 /** frames are small but still bigger than the default body budget */
 export const maxDuration = 60;
@@ -23,8 +25,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function isOverloaded(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
-  if (status === 503 || status === 429) return true;
+  if (status === 503) return true;
   return /503|overload|UNAVAILABLE|high demand/i.test(String(err));
+}
+
+/** out of quota. retrying straight away only spends more of it. */
+function isLimited(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (status === 429) return true;
+  return /429|RESOURCE_EXHAUSTED|quota/i.test(String(err));
 }
 
 /** [ymin, xmin, ymax, xmax] over 0-1000 -> a 0..1 rectangle */
@@ -185,6 +194,10 @@ export async function POST(req: Request) {
     return NextResponse.json(parsed);
   } catch (err) {
     // a failed look must never stall the cook. fall back to the written cue.
+    if (isLimited(err)) {
+      console.warn("[look] out of quota, telling the client to back off");
+      return NextResponse.json({ ...mockFor(stepN), limited: true });
+    }
     console.error("[look] vision call failed:", err);
     return NextResponse.json(mockFor(stepN));
   }

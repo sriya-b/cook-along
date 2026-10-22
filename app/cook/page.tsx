@@ -17,7 +17,8 @@ import {
 import { scaledQuantity } from "@/lib/scale";
 import { findAnswer, FALLBACK } from "@/lib/knowledge";
 import { useCamera } from "@/lib/useCamera";
-import { useVision } from "@/lib/useVision";
+import { useVision, grabFrame } from "@/lib/useVision";
+import type { AskResult } from "@/app/api/ask/route";
 import type { LookResult } from "@/lib/vision";
 import { useAnchor, anchorStyle } from "@/lib/anchor";
 import { useFlow } from "@/lib/useFlow";
@@ -31,9 +32,18 @@ const ADVANCE_DELAY = 2600;
 const EXCHANGE_LIFE = 9000;
 /** how long the confirmation is readable before a hands-free step moves on */
 const CONFIRM_DELAY = 2200;
-/** how often to take another look while it is still unsure. the free tier
- *  answers in 15s or so, so anything tighter just queues up behind itself. */
-const LOOK_EVERY = 14000;
+/** the pause between one answer and the next look while it is still
+ *  hunting for the station. flash lite answers in about a second, so a
+ *  look lands roughly every six. */
+const LOOK_EVERY = 5000;
+/** ...and once it has found the station. it keeps looking, slower, so the
+ *  pan's position is corrected before the tracker drifts far (F3). */
+const LOOK_SETTLED = 10000;
+/** google said we are over quota: wait this long before asking again */
+const LOOK_LIMITED = 60000;
+/** the look was skipped (one already in flight, or too soon after the
+ *  last): try again shortly rather than a whole interval later (F11) */
+const LOOK_RETRY = 1000;
 /** below this the model is guessing, so we keep looking */
 const LOOK_FLOOR = 0.6;
 /** ...and it has to be this sure before its word moves the recipe on */
@@ -147,22 +157,20 @@ function CookScreen() {
   // the model recognises one from across the counter.
   const [seen, setSeen] = useState<LookResult | null>(null);
   // the pan's last known place, kept apart from `seen` on purpose: a look
-  // that failed or was throttled says nothing about where the pan is, and
-  // letting it null this was making the ring blink out every few seconds.
+  // that failed or was throttled says nothing about where the pan is. it
+  // also outlives the step, because the pan has not moved just because
+  // the page turned.
   const [panBox, setPanBox] = useState<LookResult["panBox"]>(null);
   useEffect(() => {
     setSeen(null);
-    setPanBox(null);
   }, [step]);
 
   const stationFound = seen?.seesStation === step.station;
-  // the model says roughly where the pan is every fifteen seconds; the
-  // local tracker follows it frame by frame in between, which is what
-  // makes the cue stay stuck to it rather than lag behind.
-  // optical flow follows the pan's own surface frame to frame. the
-  // speckles that made it unrecognisable are what make it followable.
+  // the model says roughly where the pan is every so often; in between,
+  // the tracker follows how the whole scene moves, which is what keeps the
+  // timer stuck to the pan rather than lagging behind it.
   const tracked = useFlow(videoRef, state === "live", panBox);
-  const anchor = useAnchor(tracked);
+  const anchor = useAnchor(tracked, videoRef);
   // "detecting" means we have not heard back yet for this step. once the
   // model has spoken, whatever it said, its own words are better than a
   // spinner that never stops.
@@ -239,7 +247,8 @@ function CookScreen() {
   // the useful thing to say when the phone is pointed at a desk is "point me
   // at your counter", and only the model can tell us that.
   const { look } = useVision(videoRef);
-  /** stop looking once it has told us something it was sure about */
+  /** it has placed us at this step's station. looks slow down after this
+   *  but do not stop, and the tip stops changing with every answer. */
   const settledRef = useRef(false);
 
   useEffect(() => {
@@ -250,48 +259,66 @@ function CookScreen() {
     if (state !== "live") return;
 
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    async function takeOne() {
-      // a question on screen is the cook's to answer, not ours to talk over
-      if (cancelled || settledRef.current || pending) return;
+    /** one look, and how long to wait before the next. each look is
+     *  scheduled from when the last one answered, so a slow answer never
+     *  stacks up behind another. */
+    async function takeOne(): Promise<number> {
+      // a question on screen is the cook's to answer, not ours to talk
+      // over; a hidden tab has nobody to talk to
+      if (pending || document.hidden) return LOOK_EVERY;
       const result = await look(step.n, [...omitted]);
-      if (cancelled || !result) return;
+      if (cancelled) return LOOK_EVERY;
+      if (!result) return LOOK_RETRY;
+      if (result.limited) return LOOK_LIMITED;
 
-      // a mocked reply means the model could not answer: quota, a timeout,
-      // or an overload. record it anyway so the screen stops saying it is
+      // a mocked reply means the model could not answer: a timeout or an
+      // overload. record it anyway so the screen stops saying it is
       // looking and falls back to the written cue.
       setSeen(result);
+      const pace = settledRef.current ? LOOK_SETTLED : LOOK_EVERY;
       // a failed or mocked look has nothing useful to say about the pan,
       // so leave the last known box alone rather than wiping it
       if (result.mocked || result.error) {
         if (result.error) showTip(result.tip, false);
-        return;
+        return pace;
       }
-      // only a real answer moves, or clears, the pan
-      setPanBox(result.panBox);
-      // one line at a time, replacing whatever was there
-      showTip(result.tip, true);
+      // only a real sighting moves the pan. "no pan in view" is what the
+      // model says when the camera has turned away, and the tracker knows
+      // better than that where it went.
+      if (result.panBox) setPanBox(result.panBox);
 
-      // only stop looking once it has actually placed us at this step's
-      // station. a confident "that is a desk" is not a reason to give up.
       const atStation = result.seesStation === step.station;
+      // a new line every few seconds would be chatter. once it has found
+      // the station, the tip only changes if the cook has wandered off
+      // or the step looks done.
+      if (!settledRef.current || !atStation || result.stepLooksComplete) {
+        showTip(result.tip, true);
+      }
       if (atStation && result.confidence >= LOOK_FLOOR) settledRef.current = true;
 
-      if (resolved.timer) return;
       if (
+        !resolved.timer &&
+        !advanceRef.current &&
         atStation &&
         result.stepLooksComplete &&
         result.confidence >= LOOK_ADVANCE
       ) {
         advanceRef.current = setTimeout(next, ADVANCE_DELAY);
       }
+      return settledRef.current ? LOOK_SETTLED : LOOK_EVERY;
     }
 
-    takeOne();
-    const id = setInterval(takeOne, LOOK_EVERY);
+    async function loop() {
+      const wait = await takeOne();
+      if (!cancelled) timer = setTimeout(loop, wait);
+    }
+
+    loop();
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (timer) clearTimeout(timer);
     };
   }, [state, step, pending, omitted, look, showTip, next, resolved.timer]);
 
@@ -317,17 +344,32 @@ function CookScreen() {
 
   useEffect(() => clearChatTimers, [clearChatTimers]);
 
-  /** speak to the assistant. the browser does the transcription. */
+  type Recogniser = {
+    lang: string;
+    interimResults: boolean;
+    continuous: boolean;
+    start: () => void;
+    stop: () => void;
+    onresult:
+      | ((e: {
+          results: { length: number; [i: number]: { isFinal: boolean; 0: { transcript: string } } };
+        }) => void)
+      | null;
+    onend: (() => void) | null;
+    onerror: ((e: { error?: string }) => void) | null;
+  };
+  const recRef = useRef<Recogniser | null>(null);
+  /** bumps with every question, so a slow answer to an old one is dropped */
+  const askIdRef = useRef(0);
+
+  /** speak to the assistant. the browser does the transcription, and the
+   *  words appear in the feedback line as they are heard. tapping again
+   *  while it listens stops it and sends what it has. */
   function listen() {
-    type Recogniser = {
-      lang: string;
-      interimResults: boolean;
-      start: () => void;
-      stop: () => void;
-      onresult: ((e: { results: { 0: { 0: { transcript: string } } } }) => void) | null;
-      onend: (() => void) | null;
-      onerror: (() => void) | null;
-    };
+    if (recRef.current) {
+      recRef.current.stop();
+      return;
+    }
     const w = window as unknown as {
       SpeechRecognition?: new () => Recogniser;
       webkitSpeechRecognition?: new () => Recogniser;
@@ -337,14 +379,72 @@ function CookScreen() {
       showTip("This browser cannot listen yet.", false);
       return;
     }
+    clearChatTimers();
     const rec = new Ctor();
     rec.lang = "en-US";
-    rec.interimResults = false;
-    rec.onresult = (e) => ask(e.results[0][0].transcript);
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.interimResults = true;
+    rec.continuous = false;
+    let heard = "";
+    let sent = false;
+    const send = () => {
+      if (sent || !heard.trim()) return;
+      sent = true;
+      ask(heard);
+    };
+    rec.onresult = (e) => {
+      let text = "";
+      let final = false;
+      for (let i = 0; i < e.results.length; i++) {
+        text += e.results[i][0].transcript;
+        final = e.results[i].isFinal;
+      }
+      heard = text;
+      // their own words, live, in the same place the reply will land
+      if (!sent) setExchange({ you: sentence(text), reply: null });
+      if (final) send();
+    };
+    rec.onend = () => {
+      recRef.current = null;
+      setListening(false);
+      // safari sometimes ends without marking the last result final
+      send();
+      if (!sent) setExchange(null);
+    };
+    rec.onerror = (e) => {
+      recRef.current = null;
+      setListening(false);
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        showTip("Allow the microphone to talk to me.", false);
+      }
+    };
+    recRef.current = rec;
     setListening(true);
+    setExchange({ you: "Listening...", reply: null });
     rec.start();
+  }
+
+  // stop listening if the screen goes away mid-sentence
+  useEffect(() => () => recRef.current?.stop(), []);
+
+  /** the model's answer to a spoken question, or null to use our own */
+  async function askModel(q: string): Promise<AskResult> {
+    const video = videoRef.current;
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: q,
+          stepN: step.n,
+          omitted: [...omitted],
+          frame: video ? grabFrame(video) : null,
+        }),
+      });
+      if (!res.ok) return { answer: null };
+      return (await res.json()) as AskResult;
+    } catch {
+      return { answer: null };
+    }
   }
 
   function ask(input: string) {
@@ -378,34 +478,47 @@ function CookScreen() {
     const dropping = omit !== null && !omitted.has(omit);
     if (dropping) setPending(null);
 
-    const reply = dropping
-      ? `Got it! You can use ${OMISSIONS[omit].substitute} instead, otherwise updating the recipe...`
-      : (findAnswer(q, step.n)?.text ?? FALLBACK);
-
-    chatRef.current.push(
-      setTimeout(() => {
-        if (dropping) setOmitted((prev) => new Set(prev).add(omit));
-        setExchange({ you: q, reply });
-      }, REPLY_DELAY),
-    );
-
-    // dropping an ingredient is a decision, so the recipe carries on by itself
+    // dropping an ingredient rewrites the recipe, so it stays local and
+    // instant, and the recipe carries on by itself
     if (dropping) {
+      const reply = `Got it! You can use ${OMISSIONS[omit].substitute} instead, otherwise updating the recipe...`;
+      chatRef.current.push(
+        setTimeout(() => {
+          setOmitted((prev) => new Set(prev).add(omit));
+          setExchange({ you: q, reply });
+        }, REPLY_DELAY),
+      );
       chatRef.current.push(
         setTimeout(() => {
           setExchange(null);
           next();
         }, REPLY_DELAY + ADVANCE_DELAY),
       );
-    } else {
-      chatRef.current.push(
-        setTimeout(() => setExchange(null), REPLY_DELAY + EXCHANGE_LIFE),
-      );
+      return;
     }
+
+    // anything else goes to the model, which sees the recipe, the step and
+    // the counter. the author's notes are the fallback when it can't answer.
+    const id = ++askIdRef.current;
+    const startedAt = Date.now();
+    askModel(q).then(({ answer: said }) => {
+      if (id !== askIdRef.current) return;
+      const reply = said ?? findAnswer(q, step.n)?.text ?? FALLBACK;
+      // their own line stays up a beat even when the answer is instant
+      const wait = Math.max(0, REPLY_DELAY - (Date.now() - startedAt));
+      chatRef.current.push(
+        setTimeout(() => {
+          if (id !== askIdRef.current) return;
+          setExchange({ you: q, reply });
+          chatRef.current.push(setTimeout(() => setExchange(null), EXCHANGE_LIFE));
+        }, wait),
+      );
+    });
   }
 
   // a new step is a clean slate for the assistant zone
   useEffect(() => {
+    askIdRef.current++;
     setExchange(null);
     setPending(null);
   }, [step]);
@@ -539,27 +652,10 @@ function CookScreen() {
         </div>
       </div>
 
-      {/* the timer. once the model has found the pan it leaves the middle
-          of the screen and goes to sit over it, leaning with the pan's own
-          plane so it reads as part of the counter rather than on the glass. */}
-      {/* the ring sits on the rim itself. the box the model returns is the
-          rim's ellipse as the camera sees it, so drawing it at those exact
-          bounds lands it on the pan without any 3d maths at all. this is
-          what makes the cue read as stuck to the pan rather than over it. */}
-      {tracked && (
-        <div
-          className="pan-ring pointer-events-none absolute rounded-[50%]"
-          style={{
-            left: `${tracked.x * 100}%`,
-            top: `${tracked.y * 100}%`,
-            width: `${tracked.w * 100}%`,
-            height: `${tracked.h * 100}%`,
-          }}
-        />
-      )}
-
-      {/* the timer leans with the pan's own plane and sits just above the
-          ring, so the two read as one thing lying on the hob. */}
+      {/* the timer hangs just above the pan, leaning with its plane so it
+          reads as lying on the hob rather than stuck to the glass. when the
+          pan is out of shot it waits at the screen edge on the pan's side,
+          so it can always be read and started, found or not. */}
       {remaining !== null && anchor && (
         <div
           className="pointer-events-none absolute inset-0"

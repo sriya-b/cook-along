@@ -31,6 +31,9 @@ export type LookResult = {
   seesStation: Station | null;
   /** true when this came from the mock, not the model */
   mocked?: boolean;
+  /** google refused for quota (429). the caller should back off rather
+   *  than ask again in a few seconds and make it worse. */
+  limited?: boolean;
   /** set when the look could not happen at all. shown to the cook rather
    *  than swallowed, because a silent failure looks identical to a slow
    *  answer and there is no way to tell them apart from the outside. */

@@ -19,11 +19,12 @@ function failed(why: string): LookResult {
 /** frames are downscaled before sending. the model does not need pixels. */
 const MAX_WIDTH = 512;
 const JPEG_QUALITY = 0.6;
-/** never send two frames closer together than this */
-const MIN_GAP_MS = 9000;
+/** never send two frames closer together than this. a safety net under
+ *  the cook screen's own pacing, not the pacing itself. */
+const MIN_GAP_MS = 4000;
 
 /** grab the current video frame as base64 jpeg, without the data: prefix */
-function grabFrame(video: HTMLVideoElement): string | null {
+export function grabFrame(video: HTMLVideoElement): string | null {
   if (video.readyState < 2 || !video.videoWidth) return null;
 
   const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
