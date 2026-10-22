@@ -9,6 +9,18 @@
   --field: #f2f2f2;
   --field-border: #ebebeb;
   --radius-control: 16px;
+
+  /* primary action. deep orange at the top with an amber glow pooling at
+     the bottom edge, matching the figma gradient. */
+  --orange-top: #f2600b;
+  --orange-mid: #f4740e;
+  --orange-low: #ffa51f;
+
+  /* the cookbook: warm paper, a darker gutter, a red cover edge */
+  --paper: #f7f1e4;
+  --paper-shade: #e8dec9;
+  --paper-ink: #1c1a16;
+  --cover: #c0484a;
 }
 
 @theme inline {
@@ -38,4 +50,223 @@ body {
   font-weight: 300;
   letter-spacing: -0.05em;
   line-height: normal;
+}
+
+
+/* ---- primary action -------------------------------------------------- */
+
+.btn-orange {
+  color: #fff;
+  background-image:
+    radial-gradient(
+      120% 90% at 50% 125%,
+      rgba(255, 206, 92, 0.95) 0%,
+      rgba(255, 165, 31, 0) 60%
+    ),
+    linear-gradient(
+      180deg,
+      var(--orange-top) 0%,
+      var(--orange-mid) 58%,
+      var(--orange-low) 100%
+    );
+}
+
+/* ---- the cookbook ---------------------------------------------------- */
+
+/* an open book: two cream pages, a shaded gutter between them, and the
+   board edge showing as a thin red lip around the outside. */
+.book {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.1) 0%,
+      rgba(0, 0, 0, 0) 7%,
+      rgba(0, 0, 0, 0) 45%,
+      rgba(0, 0, 0, 0.16) 50%,
+      rgba(0, 0, 0, 0) 55%,
+      rgba(0, 0, 0, 0) 93%,
+      rgba(0, 0, 0, 0.1) 100%
+    );
+  border-bottom: 3px solid var(--cover);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.45),
+    inset 0 -8px 14px -10px rgba(0, 0, 0, 0.35);
+}
+
+/* the gloss: one soft diagonal sheen across the open spread */
+.book-gloss::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    112deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.42) 46%,
+    rgba(255, 255, 255, 0.08) 58%,
+    rgba(255, 255, 255, 0) 70%
+  );
+}
+
+/* ---- turning a page -------------------------------------------------- */
+
+/* a real leaf: it hinges on the spine, swings past vertical and lands on
+   the left, uncovering the page that was underneath it all along. */
+@keyframes leaf-swing {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(-178deg);
+  }
+}
+
+/* the leaf darkens as it turns away from the light, then the back of it
+   catches the light again on the way down */
+@keyframes leaf-shade {
+  0% {
+    opacity: 0;
+  }
+  48% {
+    opacity: 0.38;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* and it drags a shadow across the page it is uncovering */
+@keyframes reveal-shadow {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* going back, the left page is the one you lift, and it swings the other
+   way. same sheet, hinged on the other edge. */
+@keyframes leaf-swing-back {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(178deg);
+  }
+}
+
+.leaf {
+  position: absolute;
+  inset: 0 0 0 50%;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  animation: leaf-swing 1000ms cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  z-index: 3;
+}
+
+/* the two sides of one sheet of paper */
+.leaf-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  background-color: var(--paper);
+  overflow: hidden;
+}
+
+.leaf-back-dir {
+  inset: 0 50% 0 0;
+  transform-origin: right center;
+  animation-name: leaf-swing-back;
+}
+
+.reveal-shadow-back {
+  inset: 0 50% 0 0;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.14) 40%,
+    rgba(0, 0, 0, 0) 80%
+  );
+}
+
+.leaf-face-back {
+  transform: rotateY(180deg);
+  background-color: var(--paper-shade);
+}
+
+.leaf-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.9);
+  animation: leaf-shade 1000ms ease-in-out forwards;
+}
+
+.reveal-shadow {
+  position: absolute;
+  inset: 0 0 0 50%;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.14) 40%,
+    rgba(0, 0, 0, 0) 80%
+  );
+  animation: reveal-shadow 1000ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaf,
+  .leaf-shade,
+  .reveal-shadow {
+    animation-duration: 1ms;
+  }
+}
+
+
+/* ---- the assistant panel --------------------------------------------- */
+
+/* frosted counter rather than a colour wash: the food stays visible
+   underneath, just quietened enough to read white text over. */
+.assistant-veil {
+  /* blur only. no tint, no gradient: the counter shows through as it is,
+     just softened. the mask feathers the top edge so the blur arrives
+     gradually rather than at a hard line. */
+  mask-image: linear-gradient(to bottom, transparent 0%, black 22%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 22%);
+}
+
+
+/* ---- the ring on the pan --------------------------------------------- */
+
+/* a soft halo rather than a hard outline, breathing slowly so it reads as
+   something lit rather than something drawn. */
+@keyframes ring-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+    box-shadow:
+      0 0 22px rgba(255, 255, 255, 0.4),
+      inset 0 0 20px rgba(255, 255, 255, 0.18);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 34px rgba(255, 255, 255, 0.6),
+      inset 0 0 26px rgba(255, 255, 255, 0.28);
+  }
+}
+
+.pan-ring {
+  border: 2.5px solid rgba(255, 255, 255, 0.85);
+  animation: ring-breathe 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pan-ring {
+    animation: none;
+  }
 }

@@ -5,7 +5,7 @@
 export type Station = "board" | "bowl" | "pan";
 
 /** ingredients the cook can tell us they do not have, mid-recipe */
-export type OmitKey = "bellpepper";
+export type OmitKey = "bellpepper" | "onion";
 
 export type Ingredient = {
   /** null for things measured by feel, like a pinch of salt */
@@ -22,6 +22,14 @@ export type Ingredient = {
 
 export type Heat = "off" | "low" | "medium" | "high";
 
+/** one rewrite of a step, used when every key in `when` has been dropped */
+export type StepWithout = {
+  when: OmitKey[];
+  text: string;
+  /** null clears the step's timer: there is nothing left to wait for */
+  timer?: number | null;
+};
+
 export type Step = {
   n: number;
   station: Station;
@@ -29,8 +37,10 @@ export type Step = {
   text: string;
   /** shown in the recipe zone for this step, in place of the dish photo */
   image?: string;
-  /** replacement line once an ingredient has been dropped */
-  textWithout?: Partial<Record<OmitKey, string>>;
+  /** replacement lines once ingredients have been dropped. the rule with
+   *  the most keys matched wins, so dropping both the onions and the
+   *  peppers reads correctly rather than picking one rewrite at random. */
+  without?: StepWithout[];
   /** seconds, when the step is a wait worth timing */
   timer?: number;
   /** burner setting for this step. drives the heat tip. */
@@ -75,6 +85,12 @@ export const OMISSIONS: Record<
   OmitKey,
   { label: string; keywords: string[]; substitute: string; question: string }
 > = {
+  onion: {
+    label: "onions",
+    keywords: ["onion", "onions"],
+    substitute: "a shallot, a little leek, or nothing at all",
+    question: "I don't see any onions. Do you want to move on without them?",
+  },
   bellpepper: {
     label: "bell peppers",
     keywords: ["bell pepper", "bellpepper", "capsicum", "peppers", "pepper"],
@@ -128,13 +144,26 @@ export function findOmission(query: string): OmitKey | null {
   return null;
 }
 
-/** the step line, rewritten for whatever has been dropped */
-export function stepText(step: Step, omitted: ReadonlySet<OmitKey>): string {
-  for (const key of omitted) {
-    const alt = step.textWithout?.[key];
-    if (alt) return alt;
+/** the step, rewritten for whatever has been dropped */
+export function resolveStep(
+  step: Step,
+  omitted: ReadonlySet<OmitKey>,
+): { text: string; timer: number | null } {
+  let best: StepWithout | null = null;
+  for (const rule of step.without ?? []) {
+    if (!rule.when.every((k) => omitted.has(k))) continue;
+    if (!best || rule.when.length > best.when.length) best = rule;
   }
-  return step.text;
+  if (!best) return { text: step.text, timer: step.timer ?? null };
+  return {
+    text: best.text,
+    timer: best.timer === undefined ? (step.timer ?? null) : best.timer,
+  };
+}
+
+/** the step line alone, for callers that do not care about the timer */
+export function stepText(step: Step, omitted: ReadonlySet<OmitKey>): string {
+  return resolveStep(step, omitted).text;
 }
 
 /** the ingredient list, rewritten for whatever has been dropped */
@@ -162,13 +191,13 @@ export const recipe: Recipe = {
   cookMinutes: 3,
   ingredients: [
     { amount: 2, unit: "", item: "eggs" },
+    { amount: 2, unit: "tbsp", item: "onions", omitKey: "onion" },
     {
-      amount: 0.25,
-      unit: "cup",
-      item: "onions and bell peppers",
-      note: "heaped",
+      amount: 2,
+      unit: "tbsp",
+      item: "bell peppers",
+      note: "or other vegetables",
       omitKey: "bellpepper",
-      itemWithout: "onions",
     },
     { amount: 0.25, unit: "cup", item: "cheese", note: "cheddar or mozzarella" },
     { amount: 1.25, unit: "tsp", item: "oil" },
@@ -184,7 +213,11 @@ export const recipe: Recipe = {
       station: "board",
       image: "/steps/chopped.webp",
       text: "Chop the onions, bell peppers and coriander.",
-      textWithout: { bellpepper: "Chop the onions and coriander." },
+      without: [
+        { when: ["bellpepper"], text: "Chop the onions and coriander." },
+        { when: ["onion"], text: "Chop the bell peppers and coriander." },
+        { when: ["onion", "bellpepper"], text: "Chop the coriander." },
+      ],
       askAbout: "bellpepper",
       cue: "Small, even pieces cook through in the one minute they get.",
     },
@@ -218,7 +251,15 @@ export const recipe: Recipe = {
       station: "pan",
       image: "/steps/pan-veg.webp",
       text: "Add the onions and peppers. Saute on high heat.",
-      textWithout: { bellpepper: "Add the onions. Saute on high heat." },
+      without: [
+        { when: ["bellpepper"], text: "Add the onions. Saute on high heat." },
+        { when: ["onion"], text: "Add the peppers. Saute on high heat." },
+        {
+          when: ["onion", "bellpepper"],
+          text: "No vegetables to saute, so just warm the oil through.",
+          timer: null,
+        },
+      ],
       timer: 60,
       heat: "high",
       cue: "The onions turn glassy at the edges. One minute is enough.",

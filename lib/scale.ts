@@ -33,6 +33,24 @@ export function formatAmount(value: number): string {
   return whole ? `${whole}${glyph}` : glyph;
 }
 
+/**
+ * countable units have to agree with the scaled number, or the list reads
+ * "2 pinch turmeric". measures that never take an s (tsp, tbsp) are absent
+ * from this map on purpose.
+ */
+const PLURAL: Record<string, string> = {
+  cup: "cups",
+  pinch: "pinches",
+  clove: "cloves",
+  slice: "slices",
+  sprig: "sprigs",
+};
+
+function pluralise(unit: string, amount: number): string {
+  if (amount <= 1) return unit;
+  return PLURAL[unit] ?? unit;
+}
+
 /** the quantity line for one ingredient at the chosen servings */
 export function scaledQuantity(
   ingredient: Ingredient,
@@ -42,5 +60,6 @@ export function scaledQuantity(
   if (ingredient.amount === null) return "";
   const scaled = (ingredient.amount * servings) / baseServings;
   const amount = formatAmount(scaled);
-  return ingredient.unit ? `${amount} ${ingredient.unit}` : amount;
+  if (!ingredient.unit) return amount;
+  return `${amount} ${pluralise(ingredient.unit, scaled)}`;
 }

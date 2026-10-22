@@ -43,3 +43,8 @@ next-env.d.ts
 # teachable machine model, added locally when trained
 # (tracked once it exists; this entry only keeps stray zips out)
 /public/model/*.zip
+
+# personal kitchen photos used as test fixtures
+tests/fixtures/private/
+# previews composited over personal kitchen photos
+docs/previews/*camera*

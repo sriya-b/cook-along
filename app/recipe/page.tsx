@@ -15,11 +15,11 @@ export default function RecipePage() {
   function start() {
     const n = Number(servings);
     const safe = Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), 12) : 1;
-    router.push(`/cook?servings=${safe}`);
+    router.push(`/ingredients?servings=${safe}`);
   }
 
   return (
-    <main className="relative mx-auto w-full max-w-[402px] flex-1 px-[57px]">
+    <main className="relative mx-auto h-[100dvh] w-full max-w-[402px] overflow-hidden px-[57px]">
       <Link
         href="/"
         aria-label="back"
@@ -36,7 +36,7 @@ export default function RecipePage() {
         </svg>
       </Link>
 
-      <h1 className="font-display mt-[144.5px] text-center text-[36px]">
+      <h1 className="font-display mt-[clamp(70px,16vh,144.5px)] text-center text-[36px]">
         {recipe.title}
       </h1>
 
@@ -72,7 +72,7 @@ export default function RecipePage() {
 
       <button
         onClick={start}
-        className="mt-[16px] h-[56px] w-full rounded-[var(--radius-control)] bg-foreground text-[15px] font-semibold text-background active:opacity-90"
+        className="mt-[16px] h-[56px] w-full rounded-[var(--radius-control)] btn-orange text-[15px] font-semibold active:opacity-90"
       >
         start &rarr;
       </button>

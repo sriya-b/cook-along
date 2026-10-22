@@ -5,14 +5,14 @@ import Link from "next/link";
 // 288pt content column, 56pt controls, 36/24pt display type, 15pt ui type.
 export default function Home() {
   return (
-    <main className="mx-auto flex w-full max-w-[402px] flex-1 flex-col px-[57px]">
+    <main className="mx-auto flex h-[100dvh] w-full max-w-[402px] flex-col overflow-hidden px-[57px]">
       <Image
         src="/dish-placeholder.png"
         alt=""
         width={470}
         height={430}
         priority
-        className="mx-auto mt-[116px] h-[185px] w-[188px] object-contain"
+        className="mx-auto mt-[clamp(56px,13vh,116px)] h-[185px] w-[188px] object-contain"
       />
 
       <h1 className="font-display mt-[45.5px] text-center text-[36px]">
@@ -35,13 +35,13 @@ export default function Home() {
         />
         <button
           type="submit"
-          className="h-[56px] w-full rounded-[var(--radius-control)] bg-foreground text-[15px] font-semibold text-background active:opacity-90"
+          className="h-[56px] w-full rounded-[var(--radius-control)] btn-orange text-[15px] font-semibold active:opacity-90"
         >
           start &rarr;
         </button>
       </form>
 
-      <div className="mt-auto pb-[72px] pt-[40px]">
+      <div className="mt-auto pb-[clamp(28px,8vh,72px)] pt-[clamp(20px,5vh,40px)]">
         <h2 className="font-display text-center text-[24px]">
           got a quick question?
         </h2>
