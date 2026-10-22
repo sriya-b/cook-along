@@ -12,9 +12,7 @@
 
   /* primary action. deep orange at the top with an amber glow pooling at
      the bottom edge, matching the figma gradient. */
-  --orange-top: #f2600b;
-  --orange-mid: #f4740e;
-  --orange-low: #ffa51f;
+  --orange: #fa5b00;
 
   /* the cookbook: warm paper, a darker gutter, a red cover edge */
   --paper: #f7f1e4;
@@ -41,13 +39,13 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* crimson pro carries every display line: "hi there!", recipe titles,
-   "got a quick question?". inter carries everything else.
-   the figma style is crimson pro light 36 / auto / -5%, so weight,
-   tracking and line height all live here rather than at every call site. */
+/* mansalva, a marker hand, carries every display line ("hi there!",
+   recipe titles) and the cookbook's pages. manrope carries everything
+   else. tracking is -5% everywhere it appears, so it lives here rather
+   than at every call site. mansalva has one weight; never bold it. */
 .font-display {
-  font-family: var(--font-display), Georgia, serif;
-  font-weight: 300;
+  font-family: var(--font-display), "Marker Felt", cursive;
+  font-weight: 400;
   letter-spacing: -0.05em;
   line-height: normal;
 }
@@ -55,20 +53,37 @@ body {
 
 /* ---- primary action -------------------------------------------------- */
 
+/* flat orange, sampled from the figma export (#fa5b00). the edges are
+   feathered lighter by an inner shadow, so the shape looks soft rather
+   than cut out, and an amber glow pools at the bottom centre only. */
 .btn-orange {
   color: #fff;
-  background-image:
-    radial-gradient(
-      120% 90% at 50% 125%,
-      rgba(255, 206, 92, 0.95) 0%,
-      rgba(255, 165, 31, 0) 60%
-    ),
-    linear-gradient(
-      180deg,
-      var(--orange-top) 0%,
-      var(--orange-mid) 58%,
-      var(--orange-low) 100%
-    );
+  background-color: var(--orange);
+  background-image: radial-gradient(
+    48% 78% at 50% 118%,
+    rgba(242, 198, 104, 0.98) 0%,
+    rgba(245, 156, 44, 0.62) 42%,
+    rgba(250, 91, 0, 0) 100%
+  );
+  box-shadow:
+    inset 0 0 7px 1px rgba(255, 222, 200, 0.85),
+    inset 0 3px 7px -2px rgba(255, 210, 180, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.07);
+}
+
+/* the timer: the same orange, with the glow at the top instead, and a
+   faint white halo so it lifts off a busy counter */
+.timer-orange {
+  background-color: var(--orange);
+  background-image: radial-gradient(
+    62% 70% at 50% -10%,
+    rgba(252, 208, 128, 0.97) 0%,
+    rgba(249, 142, 32, 0.6) 46%,
+    rgba(250, 91, 0, 0) 100%
+  );
+  box-shadow:
+    inset 0 0 8px 1px rgba(255, 204, 170, 0.85),
+    0 0 18px 3px rgba(255, 255, 255, 0.3);
 }
 
 /* ---- the cookbook ---------------------------------------------------- */

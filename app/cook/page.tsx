@@ -95,11 +95,11 @@ function RightPage({
   total: number;
 }) {
   return (
-    <div className="flex h-full flex-col justify-center py-[14px] pl-[16px] pr-[18px] text-[var(--paper-ink)]">
-      <p className="text-[17px] font-semibold leading-tight">
+    <div className="font-display flex h-full flex-col justify-center py-[14px] pl-[16px] pr-[18px] text-[var(--paper-ink)]">
+      <p className="text-[21px] leading-tight text-[var(--orange)]">
         Step {step.n}/{total}
       </p>
-      <p className="mt-[7px] text-[14px] leading-[1.35]">{text}</p>
+      <p className="mt-[6px] text-[16px] leading-[1.45]">{text}</p>
       {quantities && (
         <p className="mt-[5px] text-[11px] leading-[1.3] opacity-60">{quantities}</p>
       )}
@@ -665,40 +665,31 @@ function CookScreen() {
             className="absolute origin-center transition-none"
             style={anchorStyle(anchor)}
           >
-            <div className="flex items-center gap-[10px] rounded-[16px] bg-black/55 px-[16px] py-[8px] shadow-[0_10px_26px_rgba(0,0,0,0.5)] backdrop-blur-sm">
-              <span
-                className={`text-[48px] font-semibold leading-none tabular-nums ${
-                  running ? "text-white" : "text-white/70"
-                }`}
-                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}
-              >
+            {/* the whole container is the button: tap to start, tap again
+                to pause. a small play mark shows only while it is stopped,
+                so the cook can tell it has not started yet. */}
+            <button
+              onClick={() => setRunning((r) => !r)}
+              aria-label={running ? "pause the timer" : "start the timer"}
+              className="timer-orange pointer-events-auto flex items-center gap-[7px] rounded-[14px] px-[15px] py-[9px] text-white active:scale-[0.97]"
+            >
+              {!running && (
+                <svg width="11" height="13" viewBox="0 0 17 19" fill="currentColor" aria-hidden>
+                  <path d="M2 2.2c0-1 1.1-1.6 1.9-1.1l11 7.3c.8.5.8 1.6 0 2.1l-11 7.3c-.8.5-1.9-.1-1.9-1.1V2.2Z" />
+                </svg>
+              )}
+              <span className="text-[34px] font-semibold leading-none tracking-[-0.02em] tabular-nums">
                 {mmss(Math.max(remaining, 0))}
               </span>
-              <button
-                onClick={() => setRunning((r) => !r)}
-                aria-label={running ? "pause the timer" : "start the timer"}
-                className="pointer-events-auto flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-white text-black active:scale-95"
-              >
-                {running ? (
-                  <svg width="16" height="18" viewBox="0 0 16 18" fill="currentColor" aria-hidden>
-                    <rect x="1" y="1" width="5" height="16" rx="1.5" />
-                    <rect x="10" y="1" width="5" height="16" rx="1.5" />
-                  </svg>
-                ) : (
-                  <svg width="17" height="19" viewBox="0 0 17 19" fill="currentColor" aria-hidden>
-                    <path d="M2 2.2c0-1 1.1-1.6 1.9-1.1l11 7.3c.8.5.8 1.6 0 2.1l-11 7.3c-.8.5-1.9-.1-1.9-1.1V2.2Z" />
-                  </svg>
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </div>
       )}
 
       {/* what the camera is hunting for, in the middle of the counter */}
       {searching && (
-        <div className="absolute left-1/2 top-[57%] -translate-x-1/2 bg-black/35 px-[13px] py-[4px]">
-          <span className="font-display text-[19px] leading-none text-white">
+        <div className="absolute left-1/2 top-[57%] -translate-x-1/2 rounded-[10px] bg-black/45 px-[13px] py-[7px] backdrop-blur-sm">
+          <span className="font-ui whitespace-nowrap text-[18px] leading-none text-white">
             Detecting {STATION_LABEL[step.station]}...
           </span>
         </div>
@@ -747,19 +738,19 @@ function CookScreen() {
         />
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 flex items-end gap-[14px] px-[28px] pb-[34px]">
-        <p className="font-display flex-1 text-[23px] leading-[1.25] text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+      <div className="absolute inset-x-0 bottom-0 flex items-center gap-[24px] px-[28px] pb-[34px]">
+        <p className="flex-1 text-[18px] leading-[1.35] tracking-[-0.01em] text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
           {exchange?.reply ?? exchange?.you ?? feedback}
         </p>
         <button
           onClick={listen}
           aria-label="talk to the assistant"
           aria-pressed={listening}
-          className={`flex h-[62px] w-[62px] shrink-0 items-center justify-center rounded-[16px] text-white transition-transform ${
-            listening ? "scale-110 bg-[#1a1a1a] ring-4 ring-white/50" : "bg-[#1f1f1f]"
+          className={`btn-orange flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-[13px] text-white transition-transform ${
+            listening ? "scale-110 ring-4 ring-white/50" : ""
           }`}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
             <path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.09A6 6 0 0 0 18 11Z" />
           </svg>

@@ -72,7 +72,7 @@ export default function RecipePage() {
 
       <button
         onClick={start}
-        className="mt-[16px] h-[56px] w-full rounded-[var(--radius-control)] btn-orange text-[15px] font-semibold active:opacity-90"
+        className="mt-[24px] h-[56px] w-full rounded-[var(--radius-control)] btn-orange text-[16px] font-bold active:opacity-90"
       >
         start &rarr;
       </button>

@@ -27,8 +27,9 @@ export type Placement = {
 
 /** below the cookbook, above the assistant panel, off the bezel */
 export const SAFE: Safe = { top: 214, bottom: 232, side: 12 };
-/** half the timer pill at scale 1, measured from the markup */
-export const TIMER_HALF = { w: 104, h: 33 };
+/** half the timer container at scale 1, with the play mark showing. its
+ *  glow spills past this, which is fine; the digits are what must fit. */
+export const TIMER_HALF = { w: 68, h: 26 };
 /** the pan at this fraction of the screen width counts as normal size */
 const REFERENCE_WIDTH = 0.4;
 /** how much of the real lean to apply. all of it is unreadable. */

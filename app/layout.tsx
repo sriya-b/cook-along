@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Crimson_Pro, Inter } from "next/font/google";
+import { Mansalva, Manrope } from "next/font/google";
 import "./globals.css";
 
-const crimsonPro = Crimson_Pro({
+const mansalva = Mansalva({
   variable: "--font-display",
+  weight: "400",
   subsets: ["latin"],
   display: "swap",
 });
 
-const inter = Inter({
+const manrope = Manrope({
   variable: "--font-ui",
   subsets: ["latin"],
   display: "swap",
@@ -33,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${crimsonPro.variable} ${inter.variable} h-full antialiased`}
+      className={`${mansalva.variable} ${manrope.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
