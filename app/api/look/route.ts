@@ -8,6 +8,19 @@ import { isLookResult, type LookRequest, type LookResult } from "@/lib/vision";
 // this exact model when it was checked on 2026-10-21.
 const MODEL = "gemini-3.5-flash-lite";
 
+/** a box as four named edges, 0-1000, or null when the thing is not in shot */
+const EDGES = {
+  type: Type.OBJECT,
+  nullable: true,
+  properties: {
+    top: { type: Type.INTEGER },
+    left: { type: Type.INTEGER },
+    bottom: { type: Type.INTEGER },
+    right: { type: Type.INTEGER },
+  },
+  required: ["top", "left", "bottom", "right"],
+};
+
 /** frames are small but still bigger than the default body budget */
 export const maxDuration = 60;
 
@@ -36,16 +49,29 @@ function isLimited(err: unknown): boolean {
   return /429|RESOURCE_EXHAUSTED|quota/i.test(String(err));
 }
 
-/** [ymin, xmin, ymax, xmax] over 0-1000 -> a 0..1 rectangle */
+/**
+ * a box from the model, over 0-1000, to a 0..1 rectangle. asked for as
+ * named edges: a bare [ymin, xmin, ymax, xmax] list was sometimes answered
+ * with x and y swapped, which put the box somewhere else entirely. the
+ * list form is still read, in case an answer comes back that way.
+ */
 function toBox(raw: unknown): LookResult["panBox"] {
-  if (!Array.isArray(raw) || raw.length !== 4) return null;
-  const [ymin, xmin, ymax, xmax] = raw.map(Number);
-  if ([ymin, xmin, ymax, xmax].some((n) => !Number.isFinite(n))) return null;
-  const x = Math.min(xmin, xmax) / 1000;
-  const y = Math.min(ymin, ymax) / 1000;
-  const w = Math.abs(xmax - xmin) / 1000;
-  const h = Math.abs(ymax - ymin) / 1000;
-  // a box covering everything, or nothing, is not a pan
+  let top: number, left: number, bottom: number, right: number;
+  if (Array.isArray(raw) && raw.length === 4) {
+    [top, left, bottom, right] = raw.map(Number);
+  } else if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    [top, left, bottom, right] = [r.top, r.left, r.bottom, r.right].map(Number);
+  } else {
+    return null;
+  }
+  if ([top, left, bottom, right].some((n) => !Number.isFinite(n))) return null;
+  const x = Math.min(left, right) / 1000;
+  const y = Math.min(top, bottom) / 1000;
+  const w = Math.abs(right - left) / 1000;
+  const h = Math.abs(bottom - top) / 1000;
+  // a box covering everything, or nothing, is not a pan. close up, the
+  // model answers "the whole frame", which says nothing about where it is.
   if (w < 0.03 || h < 0.03 || w > 0.98 || h > 0.98) return null;
   return { x, y, w, h };
 }
@@ -113,7 +139,7 @@ Look at the photo and answer:
 - stepLooksComplete: true only when the food clearly shows step ${stepN} is finished. False if you cannot see the food.
 - confidence: 0 to 1, how sure you are about what you are looking at. Be honest and go low when the photo does not show cooking.
 - seesStep: which step number the photo actually looks like, or null when you cannot tell. It may differ from ${stepN} if they are ahead or behind.
-- panBox: if a frying pan or skillet is visible, its bounding box as [ymin, xmin, ymax, xmax] normalised to 0-1000. Box the pan itself, the rim and body, not the handle and not the hob around it. Null when no pan is in shot.
+- panBox: if a frying pan or skillet is visible, its bounding box as top, left, bottom and right edges, each from 0 to 1000 of the image's height (top, bottom) or width (left, right). Box the pan itself, the rim and body, not the handle and not the hob around it. Null when no pan is in shot.
 - boardBox: the same for a chopping board: the whole board, not what is on it or the counter around it. Null when no board is in shot.
 - bowlBox: the same for a mixing bowl: its rim and body, not the counter around it. Null when no bowl is in shot.
 - seesStation: which of the three work areas is in shot: "board" for a chopping board, "bowl" for a mixing bowl, "pan" for a frying pan on a hob. Null if none of them is visible. Judge this generously: a board at the edge of the frame, or partly covered in vegetables, still counts. You do not need a close up.`;
@@ -171,9 +197,9 @@ export async function POST(req: Request) {
             stepLooksComplete: { type: Type.BOOLEAN },
             confidence: { type: Type.NUMBER },
             seesStep: { type: Type.INTEGER, nullable: true },
-            panBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
-            boardBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
-            bowlBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
+            panBox: EDGES,
+            boardBox: EDGES,
+            bowlBox: EDGES,
             seesStation: {
               type: Type.STRING,
               nullable: true,
