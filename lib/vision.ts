@@ -13,6 +13,16 @@ export type LookRequest = {
 
 import type { Station } from "./recipe";
 
+/** a rectangle in 0..1 of the camera frame */
+export type Box = { x: number; y: number; w: number; h: number };
+
+/** the box for a station, from one look */
+export function boxFor(r: LookResult, station: Station): Box | null {
+  if (station === "pan") return r.panBox;
+  if (station === "board") return r.boardBox ?? null;
+  return r.bowlBox ?? null;
+}
+
 export type LookResult = {
   /** one short lowercase line for the assistant zone */
   tip: string;
@@ -25,7 +35,11 @@ export type LookResult = {
   seesStep: number | null;
   /** where the pan is in the frame, 0..1 of the width and height, or null
    *  when there is no pan in shot. this is what the timer anchors to. */
-  panBox: { x: number; y: number; w: number; h: number } | null;
+  panBox: Box | null;
+  /** where the cutting board and the mixing bowl are, the same way. the
+   *  action clips sit on these. */
+  boardBox?: Box | null;
+  bowlBox?: Box | null;
   /** which station is in shot, if any. this replaces the colour guesswork:
    *  the model knows a cutting board from across the room. */
   seesStation: Station | null;

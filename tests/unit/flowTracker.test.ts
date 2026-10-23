@@ -118,3 +118,23 @@ test("knows nothing until seeded, and forgets on null", () => {
   t.seed(null);
   assert.equal(t.update(view(world, 502, 400, W, H)), null);
 });
+
+test("several objects move together with the scene", () => {
+  const t = new FlowTracker(W, H);
+  const path = Array.from({ length: 120 }, (_, i) => ({ x: 520 - 2 * i, y: 450 + i }));
+  t.update(view(world, path[0].x, path[0].y, W, H));
+  t.seed(truth(path[0].x, path[0].y));
+  const board = { x: 0.1, y: 0.6, w: 0.3, h: 0.1 };
+  t.seed(board, "board");
+  for (let i = 1; i < path.length; i++) t.update(view(world, path[i].x, path[i].y, W, H));
+  const pan = t.current()!;
+  const b = t.current("board")!;
+  // both moved by the same amount, and that amount is the camera's motion
+  const moved = { x: (2 * 119) / W, y: -119 / H };
+  assert.ok(Math.abs(b.x - board.x - moved.x) * W < 3, `board x off by ${(b.x - board.x - moved.x) * W}px`);
+  assert.ok(Math.abs(b.y - board.y - moved.y) * H < 3);
+  assert.ok(Math.abs(b.x - board.x - (pan.x - truth(path[0].x, path[0].y).x)) * W < 0.01);
+  t.seed(null, "board");
+  assert.equal(t.current("board"), null);
+  assert.ok(t.current(), "forgetting the board keeps the pan");
+});

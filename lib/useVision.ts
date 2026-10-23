@@ -22,6 +22,8 @@ const JPEG_QUALITY = 0.6;
 /** never send two frames closer together than this. a safety net under
  *  the cook screen's own pacing, not the pacing itself. */
 const MIN_GAP_MS = 4000;
+/** ...except the first look at a new page, which the cook is waiting on */
+const MIN_GAP_URGENT_MS = 1500;
 
 /** grab the current video frame as base64 jpeg, without the data: prefix */
 export function grabFrame(video: HTMLVideoElement): string | null {
@@ -56,11 +58,12 @@ export function useVision(videoRef: React.RefObject<HTMLVideoElement | null>) {
   const inFlight = useRef(false);
 
   const look = useCallback(
-    async (stepN: number, omitted: string[] = []): Promise<LookResult | null> => {
+    async (stepN: number, omitted: string[] = [], urgent = false): Promise<LookResult | null> => {
       const now = Date.now();
       // one at a time, and not too often. a cook moving the phone around
       // should not queue up a dozen calls.
-      if (inFlight.current || now - lastAt.current < MIN_GAP_MS) return null;
+      const gap = urgent ? MIN_GAP_URGENT_MS : MIN_GAP_MS;
+      if (inFlight.current || now - lastAt.current < gap) return null;
 
       const video = videoRef.current;
       if (!video) return failed("No camera to look through.");

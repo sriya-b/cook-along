@@ -90,3 +90,22 @@ test("the safe area starts just below the cookbook", async () => {
   const p = placeTimer({ x: 0.3, y: -0.5, w: 0.4, h: 0.15 }, { ...PHONE, width: 402 }, safeBelow(bookBottom(402)));
   assert.ok(p.y - TIMER_HALF.h * p.scale >= bookBottom(402), "timer clears the book");
 });
+
+test("a clip is scaled and moved so its drawn pan sits on the real pan", async () => {
+  const { placeClip } = await import("../../lib/placement.ts");
+  const fit = { x: 48, y: 160, w: 184, h: 94 };
+  const box = { x: 0.3, y: 0.5, w: 0.4, h: 0.15 };
+  const p = placeClip(box, fit, PHONE);
+  const s = p.size / 300;
+  const tl = cameraToScreen(box.x, box.y, PHONE);
+  // the drawn pan's width matches the real pan's width on screen
+  near(fit.w * s, box.w * tl.sx, 0.01);
+  // and their centres coincide
+  near(p.left + (fit.x + fit.w / 2) * s, tl.x + (box.w * tl.sx) / 2, 0.01);
+  near(p.top + (fit.y + fit.h / 2) * s, tl.y + (box.h * tl.sy) / 2, 0.01);
+  assert.equal(p.visible, true);
+  // off screen: nowhere to play
+  assert.equal(placeClip({ ...box, x: 1.6 }, fit, PHONE).visible, false);
+  // a tiny, distant pan still gets a readable clip
+  assert.ok(placeClip({ ...box, w: 0.05 }, fit, PHONE).size >= 150);
+});

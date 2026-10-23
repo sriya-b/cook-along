@@ -17,9 +17,12 @@ import { findAnswer, FALLBACK } from "@/lib/knowledge";
 import { useCamera } from "@/lib/useCamera";
 import { useVision, grabFrame } from "@/lib/useVision";
 import type { AskResult } from "@/app/api/ask/route";
-import type { LookResult } from "@/lib/vision";
+import { boxFor, type LookResult } from "@/lib/vision";
 import { useAnchor, anchorStyle } from "@/lib/anchor";
-import { useFlow } from "@/lib/useFlow";
+import { useFlow, type Boxes } from "@/lib/useFlow";
+import { placeClip, type View } from "@/lib/placement";
+import { ACTIONS, type ActionName } from "@/lib/actions/index";
+import { ActionClip } from "@/components/ActionClip";
 import { Cookbook, type Page } from "@/components/Cookbook";
 
 
@@ -104,21 +107,51 @@ function CookScreen() {
   // board to fill the middle of the frame, so you had to lean right over it;
   // the model recognises one from across the counter.
   const [seen, setSeen] = useState<LookResult | null>(null);
-  // the pan's last known place, kept apart from `seen` on purpose: a look
-  // that failed or was throttled says nothing about where the pan is. it
-  // also outlives the step, because the pan has not moved just because
-  // the page turned.
-  const [panBox, setPanBox] = useState<LookResult["panBox"]>(null);
+  // where the pan, board and bowl were last seen, kept apart from `seen`
+  // on purpose: a look that failed or was throttled says nothing about
+  // where anything is. they also outlive the step, because nothing on the
+  // counter has moved just because the page turned.
+  const [boxes, setBoxes] = useState<Boxes>({ pan: null, board: null, bowl: null });
+  // the action clip playing now, if any. `id` restarts it.
+  const [clip, setClip] = useState<{ name: ActionName; id: number } | null>(null);
+  /** each step's clip plays once, the first time its station is found */
+  const playedRef = useRef(false);
   useEffect(() => {
     setSeen(null);
+    setClip(null);
+    playedRef.current = false;
   }, [step]);
 
   const stationFound = seen?.seesStation === step.station;
   // the model says roughly where the pan is every so often; in between,
   // the tracker follows how the whole scene moves, which is what keeps the
   // timer stuck to the pan rather than lagging behind it.
-  const tracked = useFlow(videoRef, state === "live", panBox);
-  const anchor = useAnchor(tracked, videoRef);
+  const tracked = useFlow(videoRef, state === "live", boxes);
+  const anchor = useAnchor(tracked.pan ?? null, videoRef);
+  const trackedRef = useRef(tracked);
+  useEffect(() => {
+    trackedRef.current = tracked;
+  }, [tracked]);
+
+  /** the screen and camera, for placing things over what the camera sees */
+  const viewNow = useCallback((): View | null => {
+    const v = videoRef.current;
+    if (!v || !v.clientWidth) return null;
+    return { width: v.clientWidth, height: v.clientHeight, videoWidth: v.videoWidth, videoHeight: v.videoHeight };
+  }, [videoRef]);
+
+  /** play a clip, but only if its station has been located and is on
+   *  screen: a clip with nothing to sit on is just a cartoon */
+  const playAction = useCallback(
+    (name: ActionName, box: LookResult["panBox"]) => {
+      const view = viewNow();
+      if (!box || !view) return false;
+      if (!placeClip(box, ACTIONS[name].fit, view).visible) return false;
+      setClip({ name, id: Date.now() });
+      return true;
+    },
+    [viewNow],
+  );
   // "detecting" means we have not heard back yet for this step. once the
   // model has spoken, whatever it said, its own words are better than a
   // spinner that never stops.
@@ -208,6 +241,9 @@ function CookScreen() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    /** the first look at a page skips the usual gap: a cook who has just
+     *  turned the page is waiting to hear about it */
+    let first = true;
 
     /** one look, and how long to wait before the next. each look is
      *  scheduled from when the last one answered, so a slow answer never
@@ -216,9 +252,10 @@ function CookScreen() {
       // a question on screen is the cook's to answer, not ours to talk
       // over; a hidden tab has nobody to talk to
       if (pending || document.hidden) return LOOK_EVERY;
-      const result = await look(step.n, [...omitted]);
+      const result = await look(step.n, [...omitted], first);
       if (cancelled) return LOOK_EVERY;
       if (!result) return LOOK_RETRY;
+      first = false;
       if (result.limited) return LOOK_LIMITED;
 
       // a mocked reply means the model could not answer: a timeout or an
@@ -232,12 +269,23 @@ function CookScreen() {
         if (result.error) showTip(result.tip, false);
         return pace;
       }
-      // only a real sighting moves the pan. "no pan in view" is what the
+      // only a real sighting moves anything. "no pan in view" is what the
       // model says when the camera has turned away, and the tracker knows
       // better than that where it went.
-      if (result.panBox) setPanBox(result.panBox);
+      const found: Boxes = {};
+      for (const st of ["pan", "board", "bowl"] as const) {
+        const b = boxFor(result, st);
+        if (b) found[st] = b;
+      }
+      if (Object.keys(found).length) setBoxes((prev) => ({ ...prev, ...found }));
 
       const atStation = result.seesStation === step.station;
+      // the step's clip plays once its station is confidently in view and
+      // located, sitting on that station
+      if (step.action && !playedRef.current && atStation && result.confidence >= LOOK_FLOOR) {
+        const action = ACTIONS[step.action];
+        if (playAction(step.action, boxFor(result, action.station))) playedRef.current = true;
+      }
       // a new line every few seconds would be chatter. once it has found
       // the station, the tip only changes if the cook has wandered off
       // or the step looks done.
@@ -283,7 +331,12 @@ function CookScreen() {
     // some timers end in an action, like flipping the omelette; the rest
     // just mean it is worth a look
     showTip(step.whenTimeIsUp ?? "That is time. Take a look before you move on.", true);
-  }, [remaining, showTip, step]);
+    // and show how, on the pan where it is now, if we know where that is
+    if (step.actionWhenTimeIsUp) {
+      const name = step.actionWhenTimeIsUp;
+      playAction(name, trackedRef.current[ACTIONS[name].station] ?? null);
+    }
+  }, [remaining, showTip, step, playAction]);
 
   // --- chat ---------------------------------------------------------------
   const [listening, setListening] = useState(false);
@@ -528,6 +581,46 @@ function CookScreen() {
 
       {/* --- the cookbook ------------------------------------------------ */}
       <Cookbook page={page} />
+
+      {/* the action clip sits on its station: its drawn board, bowl or pan
+          is scaled and moved onto the real one, and follows it like the
+          timer does. a dark glow behind keeps the white readable. */}
+      {(() => {
+        if (!clip) return null;
+        const action = ACTIONS[clip.name];
+        const box = tracked[action.station];
+        const view = viewNow();
+        if (!box || !view) return null;
+        const at = placeClip(box, action.fit, view);
+        return (
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: at.left,
+              top: at.top,
+              width: at.size,
+              height: at.size,
+              transition: "left 90ms linear, top 90ms linear, width 240ms ease, height 240ms ease",
+            }}
+          >
+            <div
+              className="absolute inset-[-8%] rounded-full"
+              style={{
+                background:
+                  "radial-gradient(closest-side, rgba(22,15,10,0.62) 0%, rgba(22,15,10,0.45) 55%, rgba(22,15,10,0) 100%)",
+              }}
+            />
+            <ActionClip
+              key={clip.id}
+              frame={action.frame}
+              duration={action.duration}
+              playing
+              onDone={() => setClip(null)}
+              className="absolute inset-0"
+            />
+          </div>
+        );
+      })()}
 
       {/* the timer hangs just above the pan, leaning with its plane so it
           reads as lying on the hob rather than stuck to the glass. when the

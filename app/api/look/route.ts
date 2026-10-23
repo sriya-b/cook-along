@@ -59,7 +59,29 @@ function mockFor(stepN: number): LookResult {
     seesStep: stepN,
     seesStation: null,
     panBox: null,
+    boardBox: null,
+    bowlBox: null,
     mocked: true,
+  };
+}
+
+/**
+ * a pretend sighting of this step's station, for checking the action clips
+ * and the anchoring without a camera or a request. only with
+ * MOCK_VISION=boxes; it is never a fallback.
+ */
+function demoFor(stepN: number): LookResult {
+  const step = recipe.steps[stepN - 1];
+  const at: LookResult["panBox"] = { x: 0.22, y: 0.5, w: 0.56, h: 0.2 };
+  return {
+    tip: step?.cue ?? "Looks good.",
+    stepLooksComplete: false,
+    confidence: 0.9,
+    seesStep: stepN,
+    seesStation: step?.station ?? null,
+    panBox: step?.station === "pan" ? at : null,
+    boardBox: step?.station === "board" ? { x: 0.16, y: 0.48, w: 0.68, h: 0.22 } : null,
+    bowlBox: step?.station === "bowl" ? { x: 0.25, y: 0.46, w: 0.5, h: 0.22 } : null,
   };
 }
 
@@ -92,6 +114,8 @@ Look at the photo and answer:
 - confidence: 0 to 1, how sure you are about what you are looking at. Be honest and go low when the photo does not show cooking.
 - seesStep: which step number the photo actually looks like, or null when you cannot tell. It may differ from ${stepN} if they are ahead or behind.
 - panBox: if a frying pan or skillet is visible, its bounding box as [ymin, xmin, ymax, xmax] normalised to 0-1000. Box the pan itself, the rim and body, not the handle and not the hob around it. Null when no pan is in shot.
+- boardBox: the same for a chopping board: the whole board, not what is on it or the counter around it. Null when no board is in shot.
+- bowlBox: the same for a mixing bowl: its rim and body, not the counter around it. Null when no bowl is in shot.
 - seesStation: which of the three work areas is in shot: "board" for a chopping board, "bowl" for a mixing bowl, "pan" for a frying pan on a hob. Null if none of them is visible. Judge this generously: a board at the edge of the frame, or partly covered in vegetables, still counts. You do not need a close up.`;
 }
 
@@ -111,6 +135,9 @@ export async function POST(req: Request) {
   const key = process.env.GEMINI_API_KEY;
   // no key is the normal case while building the ui, not an error. the mock
   // keeps the whole flow exercisable without spending a request.
+  if (process.env.MOCK_VISION === "boxes") {
+    return NextResponse.json(demoFor(stepN));
+  }
   if (!key || process.env.MOCK_VISION === "1") {
     return NextResponse.json(mockFor(stepN));
   }
@@ -144,18 +171,16 @@ export async function POST(req: Request) {
             stepLooksComplete: { type: Type.BOOLEAN },
             confidence: { type: Type.NUMBER },
             seesStep: { type: Type.INTEGER, nullable: true },
-            panBox: {
-              type: Type.ARRAY,
-              nullable: true,
-              items: { type: Type.INTEGER },
-            },
+            panBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
+            boardBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
+            bowlBox: { type: Type.ARRAY, nullable: true, items: { type: Type.INTEGER } },
             seesStation: {
               type: Type.STRING,
               nullable: true,
               enum: ["board", "bowl", "pan"],
             },
           },
-          required: ["tip", "stepLooksComplete", "confidence", "seesStation", "panBox"],
+          required: ["tip", "stepLooksComplete", "confidence", "seesStation", "panBox", "boardBox", "bowlBox"],
         },
       },
     };
@@ -188,8 +213,11 @@ export async function POST(req: Request) {
       return NextResponse.json(mockFor(stepN));
     }
 
-    const raw = (parsed as { panBox?: unknown }).panBox;
-    (parsed as LookResult).panBox = toBox(raw);
+    const raw = parsed as { panBox?: unknown; boardBox?: unknown; bowlBox?: unknown };
+    const result = parsed as LookResult;
+    result.panBox = toBox(raw.panBox);
+    result.boardBox = toBox(raw.boardBox);
+    result.bowlBox = toBox(raw.bowlBox);
 
     return NextResponse.json(parsed);
   } catch (err) {

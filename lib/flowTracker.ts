@@ -72,7 +72,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export class FlowTracker {
   readonly width: number;
   readonly height: number;
-  private box: Box | null = null;
+  /** every object being kept in place, by name. the pan by default. */
+  private boxes = new Map<string, Box>();
   private pts: Pt[] = [];
   private prev: Level[] | null = null;
 
@@ -84,13 +85,24 @@ export class FlowTracker {
     this.height = height;
   }
 
-  /** a fresh reading of where the pan is, or null to forget it */
-  seed(box: Box | null) {
-    this.box = box ? { ...box } : null;
+  /** a fresh reading of where an object is, or null to forget it. the
+   *  scene's motion moves every object the same way, so following more
+   *  of them costs nothing extra. */
+  seed(box: Box | null, key = "pan") {
+    if (box) this.boxes.set(key, { ...box });
+    else this.boxes.delete(key);
   }
 
-  current(): Box | null {
-    return this.box ? { ...this.box } : null;
+  current(key = "pan"): Box | null {
+    const b = this.boxes.get(key);
+    return b ? { ...b } : null;
+  }
+
+  /** every object's current box, by name */
+  all(): Record<string, Box> {
+    const out: Record<string, Box> = {};
+    for (const [k, b] of this.boxes) out[k] = { ...b };
+    return out;
   }
 
   private pyramid(g: Float32Array): Level[] {
@@ -217,9 +229,9 @@ export class FlowTracker {
     const mdx = median(after.map((p, i) => p.x - before[i].x));
     const mdy = median(after.map((p, i) => p.y - before[i].y));
 
-    if (this.box) {
-      this.box.x = clamp(this.box.x + mdx / this.width, -OFF_FRAME_LIMIT, 1 + OFF_FRAME_LIMIT);
-      this.box.y = clamp(this.box.y + mdy / this.height, -OFF_FRAME_LIMIT, 1 + OFF_FRAME_LIMIT);
+    for (const b of this.boxes.values()) {
+      b.x = clamp(b.x + mdx / this.width, -OFF_FRAME_LIMIT, 1 + OFF_FRAME_LIMIT);
+      b.y = clamp(b.y + mdy / this.height, -OFF_FRAME_LIMIT, 1 + OFF_FRAME_LIMIT);
     }
 
     this.pts = after.length < REFRESH_BELOW ? this.choosePoints(pyr[0]) : after;

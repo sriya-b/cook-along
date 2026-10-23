@@ -102,3 +102,42 @@ export function placeTimer(box: Box | null, view: View, safe: Safe = SAFE): Plac
 
   return { x, y, scale, tilt: parked ? 0 : tilt, parked };
 }
+
+/** a rectangle in an action clip's own 300-unit drawing */
+export type ClipFit = { x: number; y: number; w: number; h: number };
+
+export type ClipPlacement = {
+  /** the clip's top left and size on screen, in css pixels */
+  left: number;
+  top: number;
+  size: number;
+  /** the object is on screen, so there is somewhere to play */
+  visible: boolean;
+};
+
+/** the clip's drawing is this many units square */
+const CLIP_UNITS = 300;
+/** never smaller than this on screen, or the action can't be read */
+const CLIP_MIN = 150;
+
+/**
+ * where an action clip goes so that the object it draws sits on the real
+ * one: scaled until the drawn board, bowl or pan is as wide as the real
+ * one on screen, then centred on it. the same camera-to-screen mapping
+ * as the timer, so both stay on the same object.
+ */
+export function placeClip(box: Box, fit: ClipFit, view: View): ClipPlacement {
+  const tl = cameraToScreen(box.x, box.y, view);
+  const w = box.w * tl.sx;
+  const h = box.h * tl.sy;
+  const cx = tl.x + w / 2;
+  const cy = tl.y + h / 2;
+  const size = Math.min(view.width * 1.6, Math.max(CLIP_MIN, (CLIP_UNITS * w) / fit.w));
+  const s = size / CLIP_UNITS;
+  return {
+    left: cx - (fit.x + fit.w / 2) * s,
+    top: cy - (fit.y + fit.h / 2) * s,
+    size,
+    visible: cx > 0 && cx < view.width && cy > 0 && cy < view.height,
+  };
+}

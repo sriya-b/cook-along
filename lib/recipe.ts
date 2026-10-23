@@ -2,6 +2,8 @@
 // screen resolves to this. swasthi's cheese omelette, split into seven
 // steps so each one sits at exactly one station.
 
+import type { ActionName } from "./actions/index.ts";
+
 export type Station = "board" | "bowl" | "pan";
 
 /** ingredients the cook can tell us they do not have, mid-recipe */
@@ -62,6 +64,11 @@ export type Step = {
   /** said when this step's timer runs out, when there is something to do
    *  right then rather than just look */
   whenTimeIsUp?: string;
+  /** the clip that shows how this step is done. it plays once the camera
+   *  has found this step's station, sitting on that station. */
+  action?: ActionName;
+  /** a clip for when the timer runs out, like flipping the omelette */
+  actionWhenTimeIsUp?: ActionName;
 };
 
 export type Recipe = {
@@ -228,6 +235,7 @@ export const recipe: Recipe = {
       // chopping is by eye; the amounts only matter once they go in the pan
       uses: [],
       askAbout: "bellpepper",
+      action: "chop",
       cue: "Small, even pieces cook through in the one minute they get.",
     },
     {
@@ -236,6 +244,7 @@ export const recipe: Recipe = {
       image: "/steps/eggs.webp",
       text: "Crack the eggs into a bowl and whisk them well.",
       uses: ["eggs"],
+      action: "whisk",
       cue: "Whisk until the yolk and white are one colour, no streaks.",
       confirm: "Looks good, the eggs are whisked well. Over to the pan.",
       advanceOnDetect: true,
@@ -255,6 +264,7 @@ export const recipe: Recipe = {
         },
       ],
       uses: ["oil", "salt"],
+      action: "addToPan",
       timer: 60,
       heat: "high",
       cue: "The onions turn glassy at the edges. One minute is enough.",
@@ -265,6 +275,7 @@ export const recipe: Recipe = {
       image: "/steps/spices.webp",
       text: "Add chili powder and garam masala, spread it evenly.",
       uses: ["red chili powder", "garam masala"],
+      action: "addToPan",
       heat: "high",
       cue: "Spread it flat so the egg sets in one even layer.",
     },
@@ -278,6 +289,8 @@ export const recipe: Recipe = {
       heat: "medium",
       cue: "The base is set when the edges lift cleanly and the top is no longer runny.",
       whenTimeIsUp: "The base should be set now. Flip it over.",
+      action: "addToPan",
+      actionWhenTimeIsUp: "flip",
     },
     {
       n: 6,
@@ -285,6 +298,7 @@ export const recipe: Recipe = {
       image: "/steps/cheese.webp",
       text: "Sprinkle the grated cheese over the top.",
       uses: ["cheese"],
+      action: "addToPan",
       heat: "low",
       cue: "Spread it right to the edges so every bite gets some.",
     },
@@ -294,6 +308,7 @@ export const recipe: Recipe = {
       image: "/steps/folded.webp",
       text: "Fold it in half and cook on low until the cheese melts.",
       uses: [],
+      action: "fold",
       timer: 30,
       heat: "low",
       cue: "Low heat only. High heat browns the outside before the cheese gives.",
