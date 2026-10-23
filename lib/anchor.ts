@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Box } from "./flowTracker";
-import { placeTimer, type Placement, type View } from "./placement";
+import { placeTimer, safeBelow, type Placement, type View } from "./placement";
+import { bookBottom } from "./bookGeometry";
 
 export type { Placement };
 
@@ -43,7 +44,7 @@ export function useAnchor(
       raf = requestAnimationFrame(tick);
       const view = viewOf(videoRef.current);
       if (!view) return;
-      const t = placeTimer(boxRef.current, view);
+      const t = placeTimer(boxRef.current, view, safeBelow(bookBottom(view.width)));
       if (!current) {
         current = t;
         setPlaced(t);

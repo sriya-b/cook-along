@@ -80,3 +80,13 @@ test("the timer always fits on screen, at any pan size", () => {
     }
   }
 });
+
+test("the safe area starts just below the cookbook", async () => {
+  const { bookBottom } = await import("../../lib/bookGeometry.ts");
+  const { safeBelow } = await import("../../lib/placement.ts");
+  // a 402pt phone: the book is 386pt wide and raised off the top
+  near(bookBottom(402), (696 - 148) * (386 / 990), 0.01);
+  assert.equal(safeBelow(bookBottom(402)).top, Math.round((696 - 148) * (386 / 990) + 8));
+  const p = placeTimer({ x: 0.3, y: -0.5, w: 0.4, h: 0.15 }, { ...PHONE, width: 402 }, safeBelow(bookBottom(402)));
+  assert.ok(p.y - TIMER_HALF.h * p.scale >= bookBottom(402), "timer clears the book");
+});

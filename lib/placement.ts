@@ -25,9 +25,14 @@ export type Placement = {
   parked: boolean;
 };
 
-/** below the cookbook, above the assistant panel, off the bezel */
-export const SAFE: Safe = { top: 214, bottom: 232, side: 12 };
-/** half the timer container at scale 1, with the play mark showing. its
+/** below the cookbook, above the assistant panel, off the bezel. the
+ *  cookbook's height follows the screen width, so the live value comes
+ *  from safeBelow(); this default is a 402pt-wide phone. */
+export const SAFE: Safe = { top: 258, bottom: 232, side: 12 };
+
+/** the safe area for a cookbook whose lowest point is `bookBottom` px */
+export const safeBelow = (bookBottom: number): Safe => ({ ...SAFE, top: Math.round(bookBottom + 8) });
+/** half the timer container at scale 1, with its play or pause mark. its
  *  glow spills past this, which is fine; the digits are what must fit. */
 export const TIMER_HALF = { w: 68, h: 26 };
 /** the pan at this fraction of the screen width counts as normal size */

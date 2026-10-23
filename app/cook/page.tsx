@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   recipe,
@@ -12,7 +11,6 @@ import {
   OMISSIONS,
   STATION_LABEL,
   type OmitKey,
-  type Step,
 } from "@/lib/recipe";
 import { scaledQuantity } from "@/lib/scale";
 import { findAnswer, FALLBACK } from "@/lib/knowledge";
@@ -22,6 +20,7 @@ import type { AskResult } from "@/app/api/ask/route";
 import type { LookResult } from "@/lib/vision";
 import { useAnchor, anchorStyle } from "@/lib/anchor";
 import { useFlow } from "@/lib/useFlow";
+import { Cookbook, type Page } from "@/components/Cookbook";
 
 
 /** how long the cook's own line sits alone before the answer lands */
@@ -67,46 +66,6 @@ function sentence(text: string) {
 /** one round of chat, shown in the assistant zone */
 type Exchange = { you: string; reply: string | null };
 
-/** the left-hand page of the spread: the picture, printed on the paper */
-function LeftPage({ step }: { step: Step }) {
-  return (
-    <div className="flex h-full items-center justify-center p-[14px]">
-      <Image
-        src={step.image ?? recipe.image}
-        alt=""
-        width={1200}
-        height={1800}
-        className="h-[150px] w-full rounded-[2px] object-cover"
-      />
-    </div>
-  );
-}
-
-/** the right-hand page of the spread, live or mid-turn */
-function RightPage({
-  step,
-  text,
-  quantities,
-  total,
-}: {
-  step: Step;
-  text: string;
-  quantities: string;
-  total: number;
-}) {
-  return (
-    <div className="font-display flex h-full flex-col justify-center py-[14px] pl-[16px] pr-[18px] text-[var(--paper-ink)]">
-      <p className="text-[21px] leading-tight text-[var(--orange)]">
-        Step {step.n}/{total}
-      </p>
-      <p className="mt-[6px] text-[16px] leading-[1.45]">{text}</p>
-      {quantities && (
-        <p className="mt-[5px] text-[11px] leading-[1.3] opacity-60">{quantities}</p>
-      )}
-    </div>
-  );
-}
-
 function CookScreen() {
   const params = useSearchParams();
   const servings = Math.min(Math.max(Number(params.get("servings")) || 1, 1), 12);
@@ -128,17 +87,6 @@ function CookScreen() {
   const resolved = resolveStep(step, omitted);
   const text = resolved.text;
 
-  // --- turning the page ----------------------------------------------------
-  // the outgoing page keeps rendering while it swings, so the turn uncovers
-  // the new page rather than swapping the text underneath the reader.
-  const [turningFrom, setTurningFrom] = useState<{
-    step: Step;
-    text: string;
-    quantities: string;
-    /** forward lifts the right page, back lifts the left one */
-    dir: "fwd" | "back";
-  } | null>(null);
-  const lastPage = useRef<{ step: Step; text: string; quantities: string } | null>(null);
 
   // --- the one tip in the assistant zone ---------------------------------
   const [tip, setTip] = useState<string | null>(null);
@@ -329,8 +277,13 @@ function CookScreen() {
   }, [running, remaining]);
 
   useEffect(() => {
-    if (remaining === 0) showTip("That is time. Take a look before you move on.", true);
-  }, [remaining, showTip]);
+    if (remaining !== 0) return;
+    // a finished clock is a stopped one, so it shows play again
+    setRunning(false);
+    // some timers end in an action, like flipping the omelette; the rest
+    // just mean it is worth a look
+    showTip(step.whenTimeIsUp ?? "That is time. Take a look before you move on.", true);
+  }, [remaining, showTip, step]);
 
   // --- chat ---------------------------------------------------------------
   const [listening, setListening] = useState(false);
@@ -523,25 +476,27 @@ function CookScreen() {
     setPending(null);
   }, [step]);
 
-  // quantities named in this step, so the numbers sit next to the action
+  // the amounts that go in at this step, so the numbers sit next to the
+  // action. a step can name them; otherwise the step text decides.
   const lower = text.toLowerCase();
   const quantities = visibleIngredients(recipe.ingredients, omitted)
-    .filter((i) => lower.includes(i.item.split(" ")[0].toLowerCase()))
+    .filter((i) =>
+      step.uses ? step.uses.includes(i.item) : lower.includes(i.item.split(" ")[0].toLowerCase()),
+    )
     .map((i) => `${scaledQuantity(i, servings, recipe.baseServings)} ${i.item}`.trim())
     .join(" · ");
 
-  // start a turn when the step changes, and remember this page as the one
-  // that will swing away next time
-  useEffect(() => {
-    const prev = lastPage.current;
-    if (prev && prev.step !== step) {
-      setTurningFrom({ ...prev, dir: step.n > prev.step.n ? "fwd" : "back" });
-      const id = setTimeout(() => setTurningFrom(null), 1000);
-      lastPage.current = { step, text, quantities };
-      return () => clearTimeout(id);
-    }
-    lastPage.current = { step, text, quantities };
-  }, [step, text, quantities]);
+  // the spread on show. the cookbook turns a page whenever this changes.
+  const page = useMemo<Page>(
+    () => ({
+      n: step.n,
+      total: recipe.steps.length,
+      image: step.image ?? recipe.image,
+      text,
+      quantities,
+    }),
+    [step, text, quantities],
+  );
 
   // there is always something in the assistant zone: the station line while
   // we are looking, then whatever was last said, and the step's own cue
@@ -572,85 +527,7 @@ function CookScreen() {
       )}
 
       {/* --- the cookbook ------------------------------------------------ */}
-      {/* keyed on the step so react remounts it, which replays the turn */}
-      <div
-        className="absolute inset-x-0 top-0 px-[8px] pt-[6px]"
-        style={{ perspective: "1400px" }}
-      >
-        <div className="book book-gloss relative flex h-[198px] overflow-hidden rounded-b-[10px] rounded-t-[4px]">
-          {/* which half shows the old page depends on the direction:
-              the half the leaf has not covered yet is the old one. */}
-          <div className="w-1/2">
-            <LeftPage
-              step={
-                turningFrom && turningFrom.dir === "fwd" ? turningFrom.step : step
-              }
-            />
-          </div>
-
-          <div className="w-1/2">
-            {turningFrom && turningFrom.dir === "back" ? (
-              <RightPage
-                step={turningFrom.step}
-                text={turningFrom.text}
-                quantities={turningFrom.quantities}
-                total={recipe.steps.length}
-              />
-            ) : (
-              <RightPage
-                step={step}
-                text={text}
-                quantities={quantities}
-                total={recipe.steps.length}
-              />
-            )}
-          </div>
-
-          {turningFrom && (
-            <>
-              <div
-                className={`reveal-shadow ${
-                  turningFrom.dir === "back" ? "reveal-shadow-back" : ""
-                }`}
-              />
-
-              {/* one sheet. going forward it carries the old text over and
-                  lands new-picture-up; going back it carries the old
-                  picture over and lands new-text-up. */}
-              <div
-                className={`leaf ${turningFrom.dir === "back" ? "leaf-back-dir" : ""}`}
-              >
-                <div className="leaf-face">
-                  {turningFrom.dir === "fwd" ? (
-                    <RightPage
-                      step={turningFrom.step}
-                      text={turningFrom.text}
-                      quantities={turningFrom.quantities}
-                      total={recipe.steps.length}
-                    />
-                  ) : (
-                    <LeftPage step={turningFrom.step} />
-                  )}
-                  <div className="leaf-shade" />
-                </div>
-                <div className="leaf-face leaf-face-back">
-                  {turningFrom.dir === "fwd" ? (
-                    <LeftPage step={step} />
-                  ) : (
-                    <RightPage
-                      step={step}
-                      text={text}
-                      quantities={quantities}
-                      total={recipe.steps.length}
-                    />
-                  )}
-                  <div className="leaf-shade" />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <Cookbook page={page} />
 
       {/* the timer hangs just above the pan, leaning with its plane so it
           reads as lying on the hob rather than stuck to the glass. when the
@@ -666,18 +543,30 @@ function CookScreen() {
             style={anchorStyle(anchor)}
           >
             {/* the whole container is the button: tap to start, tap again
-                to pause. a small play mark shows only while it is stopped,
-                so the cook can tell it has not started yet. */}
+                to pause. the mark beside the digits always shows what a tap
+                will do, play while stopped and pause while running, and it
+                sits in a fixed slot so the digits never shift. */}
             <button
-              onClick={() => setRunning((r) => !r)}
+              onClick={() => {
+                // play on a finished clock starts it over
+                if (remaining === 0) setRemaining(resolved.timer);
+                setRunning((r) => (remaining === 0 ? true : !r));
+              }}
               aria-label={running ? "pause the timer" : "start the timer"}
               className="timer-orange pointer-events-auto flex items-center gap-[7px] rounded-[14px] px-[15px] py-[9px] text-white active:scale-[0.97]"
             >
-              {!running && (
-                <svg width="11" height="13" viewBox="0 0 17 19" fill="currentColor" aria-hidden>
-                  <path d="M2 2.2c0-1 1.1-1.6 1.9-1.1l11 7.3c.8.5.8 1.6 0 2.1l-11 7.3c-.8.5-1.9-.1-1.9-1.1V2.2Z" />
-                </svg>
-              )}
+              <span className="flex h-[14px] w-[12px] shrink-0 items-center justify-center" aria-hidden>
+                {running ? (
+                  <svg width="11" height="13" viewBox="0 0 16 18" fill="currentColor">
+                    <rect x="0.5" y="1" width="6" height="16" rx="1.6" />
+                    <rect x="9.5" y="1" width="6" height="16" rx="1.6" />
+                  </svg>
+                ) : (
+                  <svg width="11" height="13" viewBox="0 0 17 19" fill="currentColor">
+                    <path d="M2 2.2c0-1 1.1-1.6 1.9-1.1l11 7.3c.8.5.8 1.6 0 2.1l-11 7.3c-.8.5-1.9-.1-1.9-1.1V2.2Z" />
+                  </svg>
+                )}
+              </span>
               <span className="text-[34px] font-semibold leading-none tracking-[-0.02em] tabular-nums">
                 {mmss(Math.max(remaining, 0))}
               </span>

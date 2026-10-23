@@ -58,19 +58,19 @@ export const answers: Answer[] = [
     id: "sticking",
     keywords: ["sticking", "stuck", "stick to the pan", "glued"],
     text: "The pan was not hot enough when the egg went in. Leave it alone for another twenty seconds, it usually releases on its own.",
-    steps: [7],
+    steps: [5],
   },
   {
     id: "broke-flipping",
     keywords: ["broke", "broken", "fell apart", "tore", "ripped", "cannot flip", "flip"],
     text: "No harm done. It broke because the base was not set yet. Wait until the edges lift cleanly before the next one.",
-    steps: [7],
+    steps: [5],
   },
   {
     id: "cheese-not-melting",
     keywords: ["not melting", "cheese wont melt", "still solid", "cheese hard"],
     text: "Drop the heat to low and give it thirty seconds. High heat browns the outside before the cheese gives.",
-    steps: [8, 9],
+    steps: [6, 7],
   },
   {
     id: "too-salty",
@@ -81,7 +81,7 @@ export const answers: Answer[] = [
     id: "runny",
     keywords: ["runny", "wet", "not set", "liquid", "raw", "undercooked"],
     text: "Give it another thirty seconds on medium. The top stops jiggling when the base is ready to flip.",
-    steps: [7],
+    steps: [5],
   },
   {
     id: "burning",
@@ -105,13 +105,13 @@ export const answers: Answer[] = [
     id: "sweet-onions",
     keywords: ["sweet onions", "caramelize", "caramelise", "onions sweeter"],
     text: "Cook them low and slow instead of one minute on high. They turn sweet on their own, no sugar needed.",
-    steps: [5],
+    steps: [3],
   },
   {
     id: "turmeric",
     keywords: ["turmeric", "black pepper", "why turmeric"],
     text: "Add a crack of black pepper with it. The pepper helps your body take up the curcumin in the turmeric.",
-    steps: [6],
+    steps: [4],
   },
 
   // --- the recipe itself -------------------------------------------------

@@ -1,5 +1,5 @@
 // one hardcoded recipe for the prototype. any link pasted on the home
-// screen resolves to this. swasthi's cheese omelette, split into nine
+// screen resolves to this. swasthi's cheese omelette, split into seven
 // steps so each one sits at exactly one station.
 
 export type Station = "board" | "bowl" | "pan";
@@ -55,6 +55,13 @@ export type Step = {
   /** move straight on once the station is recognised. never on a timed step,
    *  where the cook still has to stand and wait. */
   advanceOnDetect?: boolean;
+  /** the ingredients whose amounts go on this step's page, by item name.
+   *  an empty list shows none. left out, the page lists whatever the step
+   *  text happens to mention. */
+  uses?: string[];
+  /** said when this step's timer runs out, when there is something to do
+   *  right then rather than just look */
+  whenTimeIsUp?: string;
 };
 
 export type Recipe = {
@@ -218,6 +225,8 @@ export const recipe: Recipe = {
         { when: ["onion"], text: "Chop the bell peppers and coriander." },
         { when: ["onion", "bellpepper"], text: "Chop the coriander." },
       ],
+      // chopping is by eye; the amounts only matter once they go in the pan
+      uses: [],
       askAbout: "bellpepper",
       cue: "Small, even pieces cook through in the one minute they get.",
     },
@@ -226,70 +235,65 @@ export const recipe: Recipe = {
       station: "bowl",
       image: "/steps/eggs.webp",
       text: "Crack the eggs into a bowl and whisk them well.",
+      uses: ["eggs"],
       cue: "Whisk until the yolk and white are one colour, no streaks.",
-      confirm: "Looks good, the eggs are whisked well.",
+      confirm: "Looks good, the eggs are whisked well. Over to the pan.",
       advanceOnDetect: true,
     },
     {
       n: 3,
-      station: "bowl",
-      text: "Add the salt and coriander to the eggs.",
-      cue: "Go light on salt here. The cheese brings plenty of its own.",
-      confirm: "Salt and coriander in. That is the bowl done — over to the pan.",
-      advanceOnDetect: true,
-    },
-    {
-      n: 4,
-      station: "pan",
-      text: "Heat the oil in a pan until just hot.",
-      confirm: "Pan it is. Just hot, not smoking — the oil should shimmer.",
-      heat: "medium",
-      cue: "Just hot, not smoking. The oil should shimmer, not haze.",
-    },
-    {
-      n: 5,
       station: "pan",
       image: "/steps/pan-veg.webp",
-      text: "Add the onions and peppers. Saute on high heat.",
+      text: "Add oil to a pan, saute the veggies and add salt.",
       without: [
-        { when: ["bellpepper"], text: "Add the onions. Saute on high heat." },
-        { when: ["onion"], text: "Add the peppers. Saute on high heat." },
+        { when: ["bellpepper"], text: "Add oil to a pan, saute the onions and add salt." },
+        { when: ["onion"], text: "Add oil to a pan, saute the peppers and add salt." },
         {
           when: ["onion", "bellpepper"],
-          text: "No vegetables to saute, so just warm the oil through.",
+          text: "Warm the oil in a pan and add a little salt.",
           timer: null,
         },
       ],
+      uses: ["oil", "salt"],
       timer: 60,
       heat: "high",
       cue: "The onions turn glassy at the edges. One minute is enough.",
     },
     {
-      n: 6,
+      n: 4,
       station: "pan",
-      text: "Stir in the spices and spread it all evenly.",
+      image: "/steps/spices.webp",
+      text: "Add chili powder and garam masala, spread it evenly.",
+      uses: ["red chili powder", "garam masala"],
       heat: "high",
       cue: "Spread it flat so the egg sets in one even layer.",
     },
     {
-      n: 7,
+      n: 5,
       station: "pan",
-      text: "Lower the heat, pour in the eggs. Cook until the base sets, then flip.",
+      image: "/steps/eggs-pan.webp",
+      text: "Pour in the eggs. Cook until the base sets, then flip.",
+      uses: ["eggs"],
       timer: 90,
       heat: "medium",
       cue: "The base is set when the edges lift cleanly and the top is no longer runny.",
+      whenTimeIsUp: "The base should be set now. Flip it over.",
     },
     {
-      n: 8,
+      n: 6,
       station: "pan",
+      image: "/steps/cheese.webp",
       text: "Sprinkle the grated cheese over the top.",
+      uses: ["cheese"],
       heat: "low",
-      cue: "Both sides should be cooked before the cheese goes on.",
+      cue: "Spread it right to the edges so every bite gets some.",
     },
     {
-      n: 9,
+      n: 7,
       station: "pan",
+      image: "/steps/folded.webp",
       text: "Fold it in half and cook on low until the cheese melts.",
+      uses: [],
       timer: 30,
       heat: "low",
       cue: "Low heat only. High heat browns the outside before the cheese gives.",
