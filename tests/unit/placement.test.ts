@@ -95,7 +95,8 @@ test("a clip is scaled and moved so its drawn pan sits on the real pan", async (
   const { placeClip } = await import("../../lib/placement.ts");
   const fit = { x: 48, y: 160, w: 184, h: 94 };
   const box = { x: 0.3, y: 0.5, w: 0.4, h: 0.15 };
-  const p = placeClip(box, fit, PHONE);
+  // at full scale the drawn pan matches the real one exactly
+  const p = placeClip(box, fit, PHONE, { scale: 1, max: 2 });
   const s = p.size / 300;
   const tl = cameraToScreen(box.x, box.y, PHONE);
   // the drawn pan's width matches the real pan's width on screen
@@ -108,4 +109,20 @@ test("a clip is scaled and moved so its drawn pan sits on the real pan", async (
   assert.equal(placeClip({ ...box, x: 1.6 }, fit, PHONE).visible, false);
   // a tiny, distant pan still gets a readable clip
   assert.ok(placeClip({ ...box, w: 0.05 }, fit, PHONE).size >= 150);
+});
+
+test("by default a clip is smaller than its object, and never too wide", async () => {
+  const { placeClip, SAFE } = await import("../../lib/placement.ts");
+  const fit = { x: 48, y: 160, w: 184, h: 94 };
+  const box = { x: 0.3, y: 0.5, w: 0.4, h: 0.15 };
+  const full = placeClip(box, fit, PHONE, { scale: 1, max: 2 });
+  const small = placeClip(box, fit, PHONE);
+  near(small.size, full.size * 0.8, 0.01);
+  // a pan filling the whole frame still gets a clip that fits the screen
+  const huge = placeClip({ x: 0.02, y: 0.3, w: 0.96, h: 0.4 }, fit, PHONE);
+  assert.ok(huge.size <= PHONE.width * 0.9 + 0.01);
+  // held on screen when its object drifts off to the right
+  const held = placeClip({ ...box, x: 1.4 }, fit, PHONE, { safe: SAFE });
+  const centre = held.left + (fit.x + fit.w / 2) * (held.size / 300);
+  assert.ok(centre < PHONE.width, `centre ${centre} should be on screen`);
 });

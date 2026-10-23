@@ -20,7 +20,8 @@ import type { AskResult } from "@/app/api/ask/route";
 import { boxFor, type LookResult } from "@/lib/vision";
 import { useAnchor, anchorStyle } from "@/lib/anchor";
 import { useFlow, type Boxes } from "@/lib/useFlow";
-import { placeClip, type View } from "@/lib/placement";
+import { placeClip, safeBelow, type View } from "@/lib/placement";
+import { bookBottom } from "@/lib/bookGeometry";
 import { ACTIONS, type ActionName } from "@/lib/actions/index";
 import { ActionClip } from "@/components/ActionClip";
 import { Cookbook, type Page } from "@/components/Cookbook";
@@ -112,14 +113,23 @@ function CookScreen() {
   // where anything is. they also outlive the step, because nothing on the
   // counter has moved just because the page turned.
   const [boxes, setBoxes] = useState<Boxes>({ pan: null, board: null, bowl: null });
-  // the action clip playing now, if any. `id` restarts it.
+  // the action clip playing now, if any. `id` restarts it. a clip always
+  // plays to the end: turning the page or losing the object doesn't cut it.
   const [clip, setClip] = useState<{ name: ActionName; id: number } | null>(null);
+  const clipRef = useRef(clip);
+  useEffect(() => {
+    clipRef.current = clip;
+  }, [clip]);
   /** each step's clip plays once, the first time its station is found */
   const playedRef = useRef(false);
+  /** this step's station has been confidently seen, so its clip is due */
+  const dueRef = useRef(false);
+  const stepRef = useRef(step);
   useEffect(() => {
     setSeen(null);
-    setClip(null);
     playedRef.current = false;
+    dueRef.current = false;
+    stepRef.current = step;
   }, [step]);
 
   const stationFound = seen?.seesStation === step.station;
@@ -141,17 +151,36 @@ function CookScreen() {
   }, [videoRef]);
 
   /** play a clip, but only if its station has been located and is on
-   *  screen: a clip with nothing to sit on is just a cartoon */
+   *  screen: a clip with nothing to sit on is just a cartoon. one already
+   *  playing is never cut short; the next look tries again after it. */
   const playAction = useCallback(
     (name: ActionName, box: LookResult["panBox"]) => {
       const view = viewNow();
-      if (!box || !view) return false;
+      if (clipRef.current || !box || !view) return false;
       if (!placeClip(box, ACTIONS[name].fit, view).visible) return false;
-      setClip({ name, id: Date.now() });
+      // the clip gets its own copy of the box, which only the camera's
+      // motion moves. a fresh answer from the model mid-clip would
+      // otherwise make it jump and resize while it plays.
+      setBoxes((prev) => ({ ...prev, clip: box }));
+      const next = { name, id: Date.now() };
+      clipRef.current = next;
+      setClip(next);
       return true;
     },
     [viewNow],
   );
+  const endAction = useCallback(() => {
+    clipRef.current = null;
+    setClip(null);
+    setBoxes((prev) => ({ ...prev, clip: null }));
+    // a clip that was due while this one played goes straight on, rather
+    // than waiting for the next look
+    const s = stepRef.current;
+    if (s.action && dueRef.current && !playedRef.current) {
+      const name = s.action;
+      if (playAction(name, trackedRef.current[ACTIONS[name].station] ?? null)) playedRef.current = true;
+    }
+  }, [playAction]);
   // "detecting" means we have not heard back yet for this step. once the
   // model has spoken, whatever it said, its own words are better than a
   // spinner that never stops.
@@ -283,6 +312,7 @@ function CookScreen() {
       // the step's clip plays once its station is confidently in view and
       // located, sitting on that station
       if (step.action && !playedRef.current && atStation && result.confidence >= LOOK_FLOOR) {
+        dueRef.current = true;
         const action = ACTIONS[step.action];
         if (playAction(step.action, boxFor(result, action.station))) playedRef.current = true;
       }
@@ -588,10 +618,10 @@ function CookScreen() {
       {(() => {
         if (!clip) return null;
         const action = ACTIONS[clip.name];
-        const box = tracked[action.station];
+        const box = tracked.clip ?? tracked[action.station];
         const view = viewNow();
         if (!box || !view) return null;
-        const at = placeClip(box, action.fit, view);
+        const at = placeClip(box, action.fit, view, { safe: safeBelow(bookBottom(view.width)) });
         return (
           <div
             className="pointer-events-none absolute"
@@ -615,7 +645,7 @@ function CookScreen() {
               frame={action.frame}
               duration={action.duration}
               playing
-              onDone={() => setClip(null)}
+              onDone={endAction}
               className="absolute inset-0"
             />
           </div>

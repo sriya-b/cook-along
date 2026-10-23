@@ -119,6 +119,11 @@ export type ClipPlacement = {
 const CLIP_UNITS = 300;
 /** never smaller than this on screen, or the action can't be read */
 const CLIP_MIN = 150;
+/** the drawn object at this fraction of the real one. at full size the
+ *  drawing, which reaches well beyond its pan, swamped the screen. */
+const CLIP_SCALE = 0.8;
+/** and never wider than this fraction of the screen */
+const CLIP_MAX = 0.9;
 
 /**
  * where an action clip goes so that the object it draws sits on the real
@@ -126,17 +131,29 @@ const CLIP_MIN = 150;
  * one on screen, then centred on it. the same camera-to-screen mapping
  * as the timer, so both stay on the same object.
  */
-export function placeClip(box: Box, fit: ClipFit, view: View): ClipPlacement {
+export function placeClip(
+  box: Box,
+  fit: ClipFit,
+  view: View,
+  opts: { scale?: number; max?: number; safe?: Safe } = {},
+): ClipPlacement {
   const tl = cameraToScreen(box.x, box.y, view);
   const w = box.w * tl.sx;
   const h = box.h * tl.sy;
   const cx = tl.x + w / 2;
   const cy = tl.y + h / 2;
-  const size = Math.min(view.width * 1.6, Math.max(CLIP_MIN, (CLIP_UNITS * w) / fit.w));
+  const scale = opts.scale ?? CLIP_SCALE;
+  const size = Math.min(view.width * (opts.max ?? CLIP_MAX), Math.max(CLIP_MIN, (scale * CLIP_UNITS * w) / fit.w));
   const s = size / CLIP_UNITS;
+  // once playing, the clip holds on screen like the timer: if its object
+  // drifts out of shot, the clip waits at the nearest edge to finish
+  const safe = opts.safe;
+  const half = (fit.w / 2) * s * 0.5;
+  const px = safe ? clamp(cx, half, view.width - half) : cx;
+  const py = safe ? clamp(cy, safe.top + half * 0.6, Math.max(safe.top + half * 0.6, view.height - safe.bottom)) : cy;
   return {
-    left: cx - (fit.x + fit.w / 2) * s,
-    top: cy - (fit.y + fit.h / 2) * s,
+    left: px - (fit.x + fit.w / 2) * s,
+    top: py - (fit.y + fit.h / 2) * s,
     size,
     visible: cx > 0 && cx < view.width && cy > 0 && cy < view.height,
   };
