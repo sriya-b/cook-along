@@ -253,14 +253,21 @@ function CookScreen() {
   const [running, setRunning] = useState(false);
   const runningRef = useRef(running);
   const remainingRef = useRef(remaining);
+  /** a short timer for finishing the step before, like vegetables that
+   *  need more sautéing before the eggs go in. while it runs it takes the
+   *  timer's place; the step's own timer comes back, full, after it. */
+  const [catchUp, setCatchUp] = useState<{ left: number; what: string; running: boolean } | null>(null);
+  const catchUpRef = useRef(catchUp);
   useEffect(() => {
     runningRef.current = running;
     remainingRef.current = remaining;
-  }, [running, remaining]);
+    catchUpRef.current = catchUp;
+  }, [running, remaining, catchUp]);
 
   useEffect(() => {
     setRemaining(resolved.timer);
     setRunning(false);
+    setCatchUp(null);
     showTip(step.cue ?? resolved.text, Boolean(resolved.timer));
   }, [step, showTip]);
 
@@ -368,8 +375,22 @@ function CookScreen() {
       // the step has begun (the model sees this step's own food, like eggs
       // in the pan), so its clock starts. a clock the cook started is left
       // alone, and one still waiting does not count down meanwhile.
+      // still finishing the step before: a short catch-up timer first,
+      // and the step's own clock waits for it. once the food is on this
+      // step, a catch-up still running is over.
+      let catchingUp = Boolean(catchUpRef.current);
+      if (atStation && result.confidence >= LOOK_FLOOR) {
+        if (result.catchUp && result.seesStep !== step.n && !catchingUp && !runningRef.current) {
+          setCatchUp({ left: result.catchUp.seconds, what: result.catchUp.what, running: true });
+          catchingUp = true;
+        } else if (catchingUp && result.seesStep === step.n) {
+          setCatchUp(null);
+          catchingUp = false;
+        }
+      }
       if (
         resolved.timer &&
+        !catchingUp &&
         !runningRef.current &&
         remainingRef.current === resolved.timer &&
         atStation &&
@@ -412,6 +433,22 @@ function CookScreen() {
       if (timer) clearTimeout(timer);
     };
   }, [state, step, pending, omitted, look, showTip, advanceFrom, resolved.timer, playAction]);
+
+  // the catch-up counts down on its own, and when it is done the step's
+  // own timer is back, full, waiting for the step to begin
+  useEffect(() => {
+    if (!catchUp?.running || catchUp.left <= 0) return;
+    const id = setInterval(
+      () => setCatchUp((c) => (c && c.running ? { ...c, left: c.left - 1 } : c)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [catchUp?.running, catchUp?.left]);
+  useEffect(() => {
+    if (!catchUp || catchUp.left > 0) return;
+    setCatchUp(null);
+    showTip(`Good, that's enough ${catchUp.what}. ${resolved.text}`, true);
+  }, [catchUp, showTip, resolved.text]);
 
   useEffect(() => {
     if (!running || remaining === null || remaining <= 0) return;
@@ -722,7 +759,7 @@ function CookScreen() {
           reads as lying on the hob rather than stuck to the glass. when the
           pan is out of shot it waits at the screen edge on the pan's side,
           so it can always be read and started, found or not. */}
-      {remaining !== null && anchor && (
+      {(catchUp || remaining !== null) && anchor && (
         <div
           className="pointer-events-none absolute inset-0"
           style={{ perspective: "760px" }}
@@ -737,15 +774,20 @@ function CookScreen() {
                 sits in a fixed slot so the digits never shift. */}
             <button
               onClick={() => {
+                // a catch-up pauses and resumes like any timer
+                if (catchUp) {
+                  setCatchUp((c) => (c ? { ...c, running: !c.running } : c));
+                  return;
+                }
                 // play on a finished clock starts it over
                 if (remaining === 0) setRemaining(resolved.timer);
                 setRunning((r) => (remaining === 0 ? true : !r));
               }}
-              aria-label={running ? "pause the timer" : "start the timer"}
+              aria-label={(catchUp ? catchUp.running : running) ? "pause the timer" : "start the timer"}
               className="timer-orange pointer-events-auto flex items-center gap-[7px] rounded-[14px] px-[15px] py-[9px] text-white active:scale-[0.97]"
             >
               <span className="flex h-[14px] w-[12px] shrink-0 items-center justify-center" aria-hidden>
-                {running ? (
+                {(catchUp ? catchUp.running : running) ? (
                   <svg width="11" height="13" viewBox="0 0 16 18" fill="currentColor">
                     <rect x="0.5" y="1" width="6" height="16" rx="1.6" />
                     <rect x="9.5" y="1" width="6" height="16" rx="1.6" />
@@ -757,9 +799,14 @@ function CookScreen() {
                 )}
               </span>
               <span className="text-[34px] font-semibold leading-none tracking-[-0.02em] tabular-nums">
-                {mmss(Math.max(remaining, 0))}
+                {mmss(Math.max(catchUp ? catchUp.left : (remaining ?? 0), 0))}
               </span>
             </button>
+            {catchUp && (
+              <p className="mt-[6px] text-center text-[13px] leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
+                finish {catchUp.what} first
+              </p>
+            )}
           </div>
         </div>
       )}

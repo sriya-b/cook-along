@@ -40,6 +40,10 @@ export type LookResult = {
    *  action clips sit on these. */
   boardBox?: Box | null;
   bowlBox?: Box | null;
+  /** the food is still on an earlier step, like vegetables that need more
+   *  sautéing before the eggs go in: how much longer, and at what. the app
+   *  runs a short timer for it before the step's own. */
+  catchUp?: { seconds: number; what: string } | null;
   /** which station is in shot, if any. this replaces the colour guesswork:
    *  the model knows a cutting board from across the room. */
   seesStation: Station | null;

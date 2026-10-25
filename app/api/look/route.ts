@@ -76,6 +76,19 @@ function toBox(raw: unknown): LookResult["panBox"] {
   return { x, y, w, h };
 }
 
+/** a sane catch-up, or null: between 10 seconds and 3 minutes */
+function toCatchUp(raw: unknown): LookResult["catchUp"] {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as { seconds?: unknown; what?: unknown };
+  const seconds = Math.round(Number(r.seconds));
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const what = typeof r.what === "string" && r.what.trim() ? r.what.trim().toLowerCase().slice(0, 24) : "the last step";
+  return { seconds: Math.min(180, Math.max(10, seconds)), what };
+}
+
+/** for the demo stand-in: how many looks each step has had */
+const demoLooks = new Map<number, number>();
+
 function mockFor(stepN: number): LookResult {
   const step = recipe.steps[stepN - 1];
   return {
@@ -98,12 +111,17 @@ function mockFor(stepN: number): LookResult {
  */
 function demoFor(stepN: number): LookResult {
   const step = recipe.steps[stepN - 1];
+  // on the eggs step, the first two looks see vegetables still sautéing
+  const looks = (demoLooks.get(stepN) ?? 0) + 1;
+  demoLooks.set(stepN, looks);
+  const behind = stepN === 5 && looks <= 2;
   const at: LookResult["panBox"] = { x: 0.22, y: 0.5, w: 0.56, h: 0.2 };
   return {
-    tip: step?.cue ?? "Looks good.",
+    tip: behind ? "Sauté the veggies a bit more before adding the eggs." : (step?.cue ?? "Looks good."),
     stepLooksComplete: false,
     confidence: 0.9,
-    seesStep: stepN,
+    seesStep: behind ? stepN - 2 : stepN,
+    catchUp: behind ? { seconds: 12, what: "sautéing" } : null,
     seesStation: step?.station ?? null,
     panBox: step?.station === "pan" ? at : null,
     boardBox: step?.station === "board" ? { x: 0.16, y: 0.48, w: 0.68, h: 0.22 } : null,
@@ -142,6 +160,7 @@ Look at the photo and answer:
 - panBox: if a frying pan or skillet is visible, its bounding box as top, left, bottom and right edges, each from 0 to 1000 of the image's height (top, bottom) or width (left, right). Box the pan itself, the rim and body, not the handle and not the hob around it. Null when no pan is in shot.
 - boardBox: the same for a chopping board: the whole board, not what is on it or the counter around it. Null when no board is in shot.
 - bowlBox: the same for a mixing bowl: its rim and body, not the counter around it. Null when no bowl is in shot.
+- catchUp: if the food shows an earlier step is not finished yet, so the cook should keep at it before doing step ${stepN} (for example the vegetables need more sautéing before the eggs go in), how many more seconds it needs, from 10 to 180, and what they are finishing in one or two lowercase words, like "sautéing". Null when the food is ready for step ${stepN} or already on it.
 - seesStation: which of the three work areas is in shot: "board" for a chopping board, "bowl" for a mixing bowl, "pan" for a frying pan on a hob. Null if none of them is visible. Judge this generously: a board at the edge of the frame, or partly covered in vegetables, still counts. You do not need a close up.`;
 }
 
@@ -200,13 +219,19 @@ export async function POST(req: Request) {
             panBox: EDGES,
             boardBox: EDGES,
             bowlBox: EDGES,
+            catchUp: {
+              type: Type.OBJECT,
+              nullable: true,
+              properties: { seconds: { type: Type.INTEGER }, what: { type: Type.STRING } },
+              required: ["seconds", "what"],
+            },
             seesStation: {
               type: Type.STRING,
               nullable: true,
               enum: ["board", "bowl", "pan"],
             },
           },
-          required: ["tip", "stepLooksComplete", "confidence", "seesStation", "panBox", "boardBox", "bowlBox"],
+          required: ["tip", "stepLooksComplete", "confidence", "seesStation", "panBox", "boardBox", "bowlBox", "catchUp"],
         },
       },
     };
@@ -244,6 +269,7 @@ export async function POST(req: Request) {
     result.panBox = toBox(raw.panBox);
     result.boardBox = toBox(raw.boardBox);
     result.bowlBox = toBox(raw.bowlBox);
+    result.catchUp = toCatchUp((parsed as { catchUp?: unknown }).catchUp);
 
     return NextResponse.json(parsed);
   } catch (err) {
