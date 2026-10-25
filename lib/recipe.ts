@@ -205,10 +205,11 @@ export const recipe: Recipe = {
   cookMinutes: 3,
   ingredients: [
     { amount: 2, unit: "", item: "eggs" },
-    { amount: 2, unit: "tbsp", item: "onions", omitKey: "onion" },
+    // chopped to taste, so named rather than measured
+    { amount: null, unit: "", item: "onions", omitKey: "onion" },
     {
-      amount: 2,
-      unit: "tbsp",
+      amount: null,
+      unit: "",
       item: "bell peppers",
       note: "or other vegetables",
       omitKey: "bellpepper",

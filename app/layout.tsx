@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Mansalva, Manrope } from "next/font/google";
 import "./globals.css";
+import { StartAtHome } from "@/components/StartAtHome";
 
 const mansalva = Mansalva({
   variable: "--font-display",
@@ -36,7 +37,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${mansalva.variable} ${manrope.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <StartAtHome />
+        {children}
+      </body>
     </html>
   );
 }

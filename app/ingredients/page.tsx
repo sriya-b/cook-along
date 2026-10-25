@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
@@ -84,7 +85,25 @@ function IngredientsScreen() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[402px] px-[57px] pb-[40px] pt-[2px]">
+    <main className="relative mx-auto w-full max-w-[402px] overflow-x-hidden px-[57px] pb-[40px] pt-[2px]">
+      {/* a spice shaker and lime wedges tucked into the top corners, both
+          running off the edge of the screen, as in the figma */}
+      <Image
+        src="/ingredients/shaker.png"
+        alt=""
+        width={298}
+        height={218}
+        priority
+        className="pointer-events-none absolute left-0 top-[2px] h-auto w-[140px] select-none"
+      />
+      <Image
+        src="/ingredients/limes.png"
+        alt=""
+        width={286}
+        height={303}
+        priority
+        className="pointer-events-none absolute right-0 top-[8px] h-auto w-[143px] select-none"
+      />
       <Link
         href="/recipe"
         aria-label="back"
@@ -101,7 +120,7 @@ function IngredientsScreen() {
         </svg>
       </Link>
 
-      <h1 className="font-display mt-[88px] text-center text-[36px]">
+      <h1 className="font-display relative mt-[112px] text-center text-[36px]">
         ingredients
       </h1>
       <p className="mt-[10px] text-center text-[15px] leading-none text-muted">
