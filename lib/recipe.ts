@@ -247,8 +247,8 @@ export const recipe: Recipe = {
       uses: ["eggs"],
       action: "whisk",
       cue: "Whisk until the yolk and white are one colour, no streaks.",
-      confirm: "Looks good, the eggs are whisked well. Over to the pan.",
-      advanceOnDetect: true,
+      // no advanceOnDetect: an empty bowl is not a finished step. it moves on
+      // when the model sees whisked egg, like every other step.
     },
     {
       n: 3,

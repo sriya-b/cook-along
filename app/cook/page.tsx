@@ -47,6 +47,8 @@ const LOOK_LIMITED = 60000;
 /** the look was skipped (one already in flight, or too soon after the
  *  last): try again shortly rather than a whole interval later (F11) */
 const LOOK_RETRY = 1000;
+/** once settled, a tip still refreshes if it is older than this */
+const TIP_REFRESH = 20000;
 /** below this the model is guessing, so we keep looking */
 const LOOK_FLOOR = 0.6;
 /** ...and it has to be this sure before its word moves the recipe on */
@@ -191,6 +193,18 @@ function CookScreen() {
     [],
   );
   const back = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
+  /** move on from step n, but only if we are still on it. a delayed
+   *  advance that fires after the cook has already swiped must not push
+   *  them a second page on. */
+  const advanceFrom = useCallback(
+    (n: number) => setIndex((i) => (i === n - 1 ? Math.min(i + 1, recipe.steps.length - 1) : i)),
+    [],
+  );
+  /** a page is turning; swipes wait for it to land */
+  const turningRef = useRef(false);
+  const onTurning = useCallback((t: boolean) => {
+    turningRef.current = t;
+  }, []);
 
   // swipe to turn the page. a swipe has to be mostly sideways and long
   // enough that reaching across the counter does not fire it.
@@ -210,6 +224,9 @@ function CookScreen() {
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy)) return;
+    // a swipe while the page is still turning is a swipe at a page the
+    // cook has not seen yet; it used to skip straight over it
+    if (turningRef.current) return;
     if (dx < 0) next();
     else back();
   }
@@ -230,9 +247,16 @@ function CookScreen() {
 
   // --- countdown for steps that are a wait --------------------------------
   const [remaining, setRemaining] = useState<number | null>(null);
-  /** the clock does not run until the cook starts it. a countdown that
-   *  starts itself is a countdown you have already half missed. */
+  /** the clock starts when the step has actually begun: the cook taps it,
+   *  or the model sees it, like eggs in the pan. it does not count down
+   *  while they are still finishing the step before. */
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(running);
+  const remainingRef = useRef(remaining);
+  useEffect(() => {
+    runningRef.current = running;
+    remainingRef.current = remaining;
+  }, [running, remaining]);
 
   useEffect(() => {
     setRemaining(resolved.timer);
@@ -249,8 +273,9 @@ function CookScreen() {
     // the timer is deliberately NOT cleaned up when stationFound changes:
     // detection flickers as the phone moves, and a flicker inside this
     // window used to cancel the advance for good.
-    advanceRef.current = setTimeout(next, CONFIRM_DELAY);
-  }, [stationFound, step, next]);
+    const from = step.n;
+    advanceRef.current = setTimeout(() => advanceFrom(from), CONFIRM_DELAY);
+  }, [stationFound, step, advanceFrom]);
 
   // --- gemini watches, and speaks first ------------------------------------
   // it looks whether or not the local detector recognises anything, because
@@ -260,9 +285,17 @@ function CookScreen() {
   /** it has placed us at this step's station. looks slow down after this
    *  but do not stop, and the tip stops changing with every answer. */
   const settledRef = useRef(false);
+  /** the last tip shown, when, and which step the model thought it saw */
+  const tipAtRef = useRef(0);
+  const seesStepRef = useRef<number | null>(null);
+  /** the cook asked for a fresh look: show its answer whatever it is */
+  const forceTipRef = useRef(false);
+  /** set by the look loop: take a look right now */
+  const lookNowRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     settledRef.current = false;
+    seesStepRef.current = null;
   }, [step]);
 
   useEffect(() => {
@@ -270,6 +303,8 @@ function CookScreen() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    /** bumps when a look is asked for, so only one chain of looks runs */
+    let chain = 0;
     /** the first look at a page skips the usual gap: a cook who has just
      *  turned the page is waiting to hear about it */
     let first = true;
@@ -317,12 +352,32 @@ function CookScreen() {
         if (playAction(step.action, boxFor(result, action.station))) playedRef.current = true;
       }
       // a new line every few seconds would be chatter. once it has found
-      // the station, the tip only changes if the cook has wandered off
-      // or the step looks done.
-      if (!settledRef.current || !atStation || result.stepLooksComplete) {
+      // the station, the tip changes when there is news: the cook has
+      // wandered off, the food has moved on a step, the step looks done,
+      // or the last line is old. and always when the cook asked.
+      const movedOn = result.seesStep !== seesStepRef.current;
+      seesStepRef.current = result.seesStep;
+      const stale = Date.now() - tipAtRef.current > TIP_REFRESH;
+      if (forceTipRef.current || !settledRef.current || !atStation || result.stepLooksComplete || movedOn || stale) {
         showTip(result.tip, true);
+        tipAtRef.current = Date.now();
+        forceTipRef.current = false;
       }
       if (atStation && result.confidence >= LOOK_FLOOR) settledRef.current = true;
+
+      // the step has begun (the model sees this step's own food, like eggs
+      // in the pan), so its clock starts. a clock the cook started is left
+      // alone, and one still waiting does not count down meanwhile.
+      if (
+        resolved.timer &&
+        !runningRef.current &&
+        remainingRef.current === resolved.timer &&
+        atStation &&
+        result.seesStep === step.n &&
+        result.confidence >= LOOK_FLOOR
+      ) {
+        setRunning(true);
+      }
 
       if (
         !resolved.timer &&
@@ -331,22 +386,32 @@ function CookScreen() {
         result.stepLooksComplete &&
         result.confidence >= LOOK_ADVANCE
       ) {
-        advanceRef.current = setTimeout(next, ADVANCE_DELAY);
+        const from = step.n;
+        advanceRef.current = setTimeout(() => advanceFrom(from), ADVANCE_DELAY);
       }
       return settledRef.current ? LOOK_SETTLED : LOOK_EVERY;
     }
 
-    async function loop() {
+    async function loop(mine: number) {
       const wait = await takeOne();
-      if (!cancelled) timer = setTimeout(loop, wait);
+      if (!cancelled && mine === chain) timer = setTimeout(() => loop(mine), wait);
     }
 
-    loop();
+    // tapping the feedback line asks for a look now, in place of waiting
+    lookNowRef.current = () => {
+      if (timer) clearTimeout(timer);
+      first = true;
+      forceTipRef.current = true;
+      showTip("Taking a fresh look...", true);
+      loop(++chain);
+    };
+
+    loop(chain);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [state, step, pending, omitted, look, showTip, next, resolved.timer]);
+  }, [state, step, pending, omitted, look, showTip, advanceFrom, resolved.timer, playAction]);
 
   useEffect(() => {
     if (!running || remaining === null || remaining <= 0) return;
@@ -593,6 +658,7 @@ function CookScreen() {
     // would otherwise push the assistant zone off the bottom of the screen.
     <div
       className="fixed inset-x-0 top-0 h-[100dvh] touch-pan-y overflow-hidden bg-black"
+      data-step={step.n}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -610,7 +676,7 @@ function CookScreen() {
       )}
 
       {/* --- the cookbook ------------------------------------------------ */}
-      <Cookbook page={page} />
+      <Cookbook page={page} onTurning={onTurning} />
 
       {/* the action clip sits on its station: its drawn board, bowl or pan
           is scaled and moved onto the real one, and follows it like the
@@ -751,9 +817,14 @@ function CookScreen() {
       </div>
 
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-[24px] px-[28px] pb-[34px]">
-        <p className="flex-1 text-[18px] leading-[1.35] tracking-[-0.01em] text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+        {/* tap the line for a fresh look and a new answer, right now */}
+        <button
+          onClick={() => lookNowRef.current()}
+          aria-label="get fresh feedback"
+          className="flex-1 text-left text-[18px] leading-[1.35] tracking-[-0.01em] text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] active:opacity-70"
+        >
           {exchange?.reply ?? exchange?.you ?? feedback}
-        </p>
+        </button>
         <button
           onClick={listen}
           aria-label="talk to the assistant"

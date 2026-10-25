@@ -2,6 +2,9 @@
 
 import { useEffect, useId, useRef } from "react";
 
+/** frames per second an action clip is redrawn at */
+const FPS = 15;
+
 /** draws one frame of an action clip at time t, as an svg string */
 export type ActionFrame = (t: number, opts: { id?: string; shadow?: boolean }) => string;
 
@@ -56,6 +59,10 @@ export function ActionClip({
     let raf = 0;
     const start = performance.now();
     const total = duration * loops;
+    // a new frame fifteen times a second, not sixty. each frame rebuilds a
+    // drawing full of blur and grain, and at sixty that starved the phone:
+    // the page turn froze on the old page and swipes overshot.
+    let shown = -1;
 
     const tick = (now: number) => {
       const elapsed = (now - start) / 1000;
@@ -64,7 +71,11 @@ export function ActionClip({
         done.current?.();
         return;
       }
-      el.innerHTML = frame(elapsed % duration, { id });
+      const n = Math.floor(elapsed * FPS);
+      if (n !== shown) {
+        shown = n;
+        el.innerHTML = frame((n / FPS) % duration, { id });
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

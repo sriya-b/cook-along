@@ -157,7 +157,14 @@ type Turn = {
  * carries the old step on one side and the new one on the other, so the
  * turn uncovers the new spread rather than swapping it in place.
  */
-export function Cookbook({ page }: { page: Page }) {
+export function Cookbook({
+  page,
+  onTurning,
+}: {
+  page: Page;
+  /** told when a page starts and stops turning */
+  onTurning?: (turning: boolean) => void;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [k, setK] = useState(0);
   const [turn, setTurn] = useState<Turn | null>(null);
@@ -194,9 +201,16 @@ export function Cookbook({ page }: { page: Page }) {
   const castLeft = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    onTurning?.(Boolean(turn));
+  }, [turn, onTurning]);
+
+  useEffect(() => {
     if (!turn) return;
     let raf = 0;
     const start = performance.now();
+    // a busy phone can starve the animation frames; the page still has to
+    // land, or the book keeps showing the old step after the app has moved
+    const landAnyway = setTimeout(() => setTurn(null), TURN_MS + 250);
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / TURN_MS);
       // p is 0 with the leaf lying on the right, 1 lying on the left
@@ -237,7 +251,10 @@ export function Cookbook({ page }: { page: Page }) {
     };
     pose(turn.dir === 1 ? 0 : 1, turn.dir);
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(landAnyway);
+    };
   }, [turn]);
 
   const left = turn ? turn.under[0] : page;
@@ -305,6 +322,7 @@ export function Cookbook({ page }: { page: Page }) {
   return (
     <div
       ref={boxRef}
+      data-showing={`${left.n}/${right.n}${turn ? " turning" : ""}`}
       className="pointer-events-none absolute left-[8px]"
       style={{ top: -RAISE * k, width: BOOK_W * k, height: BOOK_H * k }}
     >
