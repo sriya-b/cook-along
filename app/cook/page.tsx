@@ -321,8 +321,9 @@ function CookScreen() {
      *  stacks up behind another. */
     async function takeOne(): Promise<number> {
       // a question on screen is the cook's to answer, not ours to talk
-      // over; a hidden tab has nobody to talk to
-      if (pending || document.hidden) return LOOK_EVERY;
+      // over; a hidden tab has nobody to talk to. a look the cook asked
+      // for goes ahead regardless.
+      if (!forceTipRef.current && (pending || document.hidden)) return LOOK_EVERY;
       const result = await look(step.n, [...omitted], first);
       if (cancelled) return LOOK_EVERY;
       if (!result) return LOOK_RETRY;
