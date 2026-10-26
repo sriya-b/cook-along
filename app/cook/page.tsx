@@ -24,6 +24,7 @@ import { placeClip, safeBelow, type View } from "@/lib/placement";
 import { bookBottom } from "@/lib/bookGeometry";
 import { ACTIONS, type ActionName } from "@/lib/actions/index";
 import { ActionClip } from "@/components/ActionClip";
+import { play } from "@/lib/sound";
 import { Cookbook, type Page } from "@/components/Cookbook";
 
 
@@ -144,6 +145,12 @@ function CookScreen() {
   useEffect(() => {
     clipRef.current = clip;
   }, [clip]);
+  // a clip's sound starts with it and stops with it
+  useEffect(() => {
+    if (!clip) return;
+    const { sound, soundAt } = ACTIONS[clip.name];
+    return sound ? play(sound, 1, soundAt ?? 0) : undefined;
+  }, [clip]);
   /** each step's clip plays once, the first time its station is found */
   const playedRef = useRef(false);
   /** this step's station has been confidently seen, so its clip is due */
@@ -225,6 +232,7 @@ function CookScreen() {
   /** a page is turning; swipes wait for it to land */
   const turningRef = useRef(false);
   const onTurning = useCallback((t: boolean) => {
+    if (t && !turningRef.current) play("page-turn", 0.8);
     turningRef.current = t;
   }, []);
 
@@ -470,6 +478,7 @@ function CookScreen() {
   useEffect(() => {
     if (!catchUp || catchUp.left > 0) return;
     setCatchUp(null);
+    play("timer");
     showTip(`Good, that's enough ${catchUp.what}. ${resolved.text}`, true);
   }, [catchUp, showTip, resolved.text]);
 
@@ -483,6 +492,7 @@ function CookScreen() {
     if (remaining !== 0) return;
     // a finished clock is a stopped one, so it shows play again
     setRunning(false);
+    play("timer");
     // some timers end in an action, like flipping the omelette; the rest
     // just mean it is worth a look
     showTip(step.whenTimeIsUp ?? "That is time. Take a look before you move on.", true);

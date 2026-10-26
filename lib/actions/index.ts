@@ -4,6 +4,7 @@
 // be scaled and moved until its drawn pan sits on the real one.
 
 import type { Station } from "../recipe.ts";
+import type { SoundName } from "../sound.ts";
 import { chopFrame, CHOP_DURATION } from "./chop.ts";
 import { whiskFrame, WHISK_DURATION } from "./whisk.ts";
 import { addToPanFrame, ADD_TO_PAN_DURATION } from "./addToPan.ts";
@@ -19,6 +20,9 @@ export type ActionFrame = (t: number, opts: { id?: string }) => string;
 export type Fit = { x: number; y: number; w: number; h: number };
 
 export type Action = {
+  /** played with the clip, starting `soundAt` seconds in */
+  sound?: SoundName;
+  soundAt?: number;
   frame: ActionFrame;
   duration: number;
   station: Station;
@@ -30,9 +34,12 @@ const PAN: Fit = { x: 48, y: 160, w: 184, h: 94 };
 const dropped = (dy: number): Fit => ({ ...PAN, y: PAN.y + dy });
 
 export const ACTIONS: Record<ActionName, Action> = {
-  chop: { frame: chopFrame, duration: CHOP_DURATION, station: "board", fit: { x: 50, y: 138, w: 216, h: 121 } },
-  whisk: { frame: whiskFrame, duration: WHISK_DURATION, station: "bowl", fit: { x: 66, y: 136, w: 168, h: 122 } },
-  addToPan: { frame: addToPanFrame, duration: ADD_TO_PAN_DURATION, station: "pan", fit: PAN },
+  // the knife's first impact
+  chop: { sound: "chop", soundAt: 0.98, frame: chopFrame, duration: CHOP_DURATION, station: "board", fit: { x: 50, y: 138, w: 216, h: 121 } },
+  // when the whisk starts to stir
+  whisk: { sound: "whisk", soundAt: 0.7, frame: whiskFrame, duration: WHISK_DURATION, station: "bowl", fit: { x: 66, y: 136, w: 168, h: 122 } },
+  // when the first piece lands in the pan
+  addToPan: { sound: "sizzle", soundAt: 1.45, frame: addToPanFrame, duration: ADD_TO_PAN_DURATION, station: "pan", fit: PAN },
   flip: { frame: flipFrame, duration: FLIP_DURATION, station: "pan", fit: dropped(28) },
   fold: { frame: foldFrame, duration: FOLD_DURATION, station: "pan", fit: dropped(12) },
 };

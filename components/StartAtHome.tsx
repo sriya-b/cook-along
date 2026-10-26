@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { installAudioUnlock } from "@/lib/sound";
 
 const STARTED = "cook-along-started";
 
@@ -14,6 +15,9 @@ const STARTED = "cook-along-started";
  */
 export function StartAtHome() {
   const router = useRouter();
+
+  // sounds need one tap on the page before safari lets them play
+  useEffect(() => installAudioUnlock(), []);
 
   useEffect(() => {
     const atHome = () => window.location.pathname === "/";
