@@ -1,10 +1,9 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { answers } from "@/lib/knowledge";
+import { generateHedged } from "@/lib/gemini";
 import { recipe, stepText, visibleIngredients, STATION_LABEL, type OmitKey } from "@/lib/recipe";
 
-// the same pinned model as /api/look, for the same reason
-const MODEL = "gemini-3.5-flash-lite";
 
 export const maxDuration = 30;
 
@@ -84,8 +83,7 @@ export async function POST(req: Request) {
 
   try {
     const ai = new GoogleGenAI({ apiKey: key });
-    const call = ai.models.generateContent({
-      model: MODEL,
+    const call = generateHedged(ai, {
       contents: [
         {
           role: "user",

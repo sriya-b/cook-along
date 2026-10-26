@@ -2,11 +2,9 @@ import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { recipe, STATION_LABEL } from "@/lib/recipe";
 import { isLookResult, type LookRequest, type LookResult } from "@/lib/vision";
+import { generateHedged, isLimited } from "@/lib/gemini";
 
-// pinned, not the "-latest" alias: an alias can be repointed by google at any
-// time, which would silently change behaviour mid-demo. the alias resolved to
-// this exact model when it was checked on 2026-10-21.
-const MODEL = "gemini-3.5-flash-lite";
+// which models answer, and how a slow one is raced, is in lib/gemini.ts
 
 /** a box as four named edges, 0-1000, or null when the thing is not in shot */
 const EDGES = {
@@ -29,25 +27,9 @@ export const maxDuration = 60;
  *  model's line late, and a platform timeout returns neither. */
 const DEADLINE_MS = 25000;
 
-/** the flash models return 503 under load often enough to matter, and a
- *  cook staring at a pan should not see a shrug because google was busy */
-const RETRIES = 1;
-const RETRY_DELAY_MS = 500;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function isOverloaded(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  if (status === 503) return true;
-  return /503|overload|UNAVAILABLE|high demand/i.test(String(err));
-}
-
-/** out of quota. retrying straight away only spends more of it. */
-function isLimited(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  if (status === 429) return true;
-  return /429|RESOURCE_EXHAUSTED|quota/i.test(String(err));
-}
 
 /**
  * a box from the model, over 0-1000, to a 0..1 rectangle. asked for as
@@ -194,7 +176,6 @@ export async function POST(req: Request) {
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     const request = {
-      model: MODEL,
       contents: [
         {
           role: "user",
@@ -236,17 +217,8 @@ export async function POST(req: Request) {
       },
     };
 
-    const attempt = async () => {
-      for (let i = 0; i <= RETRIES; i++) {
-        try {
-          return await ai.models.generateContent(request);
-        } catch (err) {
-          if (i === RETRIES || !isOverloaded(err)) throw err;
-          await sleep(RETRY_DELAY_MS * (i + 1));
-        }
-      }
-      return null;
-    };
+    // the primary model, with a backup racing it if it is slow today
+    const attempt = () => generateHedged(ai, request);
 
     // whichever lands first: the model, or our own deadline
     const timedOut = Symbol("timed out");
