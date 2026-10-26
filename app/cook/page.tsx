@@ -90,17 +90,25 @@ function CookScreen() {
     const t = setTimeout(() => setMicHint(false), HINT_MS);
     return () => clearTimeout(t);
   }, []);
+  const swipeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
-    if (index !== 1 || swipeShownRef.current) return;
+    // leaving step 2 always takes the hint down. clearing its timers here
+    // without hiding it is what left it stuck on screen after a fast swipe.
+    if (index !== 1) {
+      swipeTimers.current.forEach(clearTimeout);
+      swipeTimers.current = [];
+      setSwipeHint(false);
+      return;
+    }
+    if (swipeShownRef.current) return;
     swipeShownRef.current = true;
     // after the page has finished turning, so the hint plays on a still book
-    const on = setTimeout(() => setSwipeHint(true), 1500);
-    const off = setTimeout(() => setSwipeHint(false), 1500 + HINT_MS);
-    return () => {
-      clearTimeout(on);
-      clearTimeout(off);
-    };
+    swipeTimers.current = [
+      setTimeout(() => setSwipeHint(true), 1500),
+      setTimeout(() => setSwipeHint(false), 1500 + HINT_MS),
+    ];
   }, [index]);
+  useEffect(() => () => swipeTimers.current.forEach(clearTimeout), []);
   const step = recipe.steps[index];
 
   // --- ingredients the cook has told us they do not have -------------------
