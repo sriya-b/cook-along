@@ -47,6 +47,8 @@ const LOOK_LIMITED = 60000;
 /** the look was skipped (one already in flight, or too soon after the
  *  last): try again shortly rather than a whole interval later (F11) */
 const LOOK_RETRY = 1000;
+/** how long each first-time hint stays up */
+const HINT_MS = 4000;
 /** once settled, a tip still refreshes if it is older than this */
 const TIP_REFRESH = 20000;
 /** below this the model is guessing, so we keep looking */
@@ -78,6 +80,26 @@ function CookScreen() {
 
   const { videoRef, state, message } = useCamera();
   const [index, setIndex] = useState(0);
+  // first-time hints, four seconds each: the mic straight away, and how
+  // to turn the page once the cook first reaches step 2
+  const [swipeHint, setSwipeHint] = useState(false);
+  const [micHint, setMicHint] = useState(true);
+  const swipeShownRef = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMicHint(false), HINT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (index !== 1 || swipeShownRef.current) return;
+    swipeShownRef.current = true;
+    // after the page has finished turning, so the hint plays on a still book
+    const on = setTimeout(() => setSwipeHint(true), 1500);
+    const off = setTimeout(() => setSwipeHint(false), 1500 + HINT_MS);
+    return () => {
+      clearTimeout(on);
+      clearTimeout(off);
+    };
+  }, [index]);
   const step = recipe.steps[index];
 
   // --- ingredients the cook has told us they do not have -------------------
@@ -716,6 +738,20 @@ function CookScreen() {
       {/* --- the cookbook ------------------------------------------------ */}
       <Cookbook page={page} onTurning={onTurning} />
 
+      {/* how to turn the page: a fingertip sweeping right to left across
+          the book, leaving a short trail */}
+      {swipeHint && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[214px]" aria-hidden>
+          <div className="swipe-hint absolute top-[94px] h-[36px] w-[36px] rounded-full border-[3px] border-white bg-[var(--orange)]/85 shadow-[0_0_0_6px_rgba(250,91,0,0.25),0_4px_14px_rgba(0,0,0,0.35)]" />
+          <div className="swipe-trail absolute top-[111px] h-[4px] rounded-full bg-gradient-to-r from-[var(--orange)]/0 to-[var(--orange)]/70" />
+          <div className="absolute inset-x-0 top-[148px] flex justify-center">
+            <span className="rounded-[10px] bg-white px-[12px] py-[7px] text-[14px] font-semibold text-[var(--paper-ink)] shadow-[0_6px_18px_rgba(0,0,0,0.3)]">
+              Swipe to turn the page
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* the action clip sits on its station: its drawn board, bowl or pan
           is scaled and moved onto the real one, and follows it like the
           timer does. a dark glow behind keeps the white readable. */}
@@ -873,8 +909,20 @@ function CookScreen() {
         >
           {exchange?.reply ?? exchange?.you ?? feedback}
         </button>
+        <div className="relative shrink-0">
+        {micHint && (
+          <div className="mic-hint pointer-events-none absolute bottom-[62px] right-[-6px] whitespace-nowrap" aria-hidden>
+            <div className="rounded-[10px] bg-white px-[12px] py-[7px] text-[14px] font-semibold text-[var(--paper-ink)] shadow-[0_6px_18px_rgba(0,0,0,0.3)]">
+              Tap to ask questions!
+            </div>
+            <div className="absolute bottom-[-6px] right-[24px] h-[12px] w-[12px] rotate-45 bg-white" />
+          </div>
+        )}
         <button
-          onClick={listen}
+          onClick={() => {
+            setMicHint(false);
+            listen();
+          }}
           aria-label="talk to the assistant"
           aria-pressed={listening}
           className={`btn-orange flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-[13px] text-white transition-transform ${
@@ -886,6 +934,7 @@ function CookScreen() {
             <path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.09A6 6 0 0 0 18 11Z" />
           </svg>
         </button>
+        </div>
       </div>
     </div>
   );

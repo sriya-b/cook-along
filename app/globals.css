@@ -95,3 +95,33 @@ body {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 22%);
 }
 
+
+/* ---- first-time hints ------------------------------------------------ */
+
+/* a fingertip sweeps right to left across the book while the hint is up */
+@keyframes swipe-hint {
+  0% { left: 70%; opacity: 0; transform: scale(0.85); }
+  12% { opacity: 1; transform: scale(1); }
+  70% { left: 22%; opacity: 1; }
+  100% { left: 18%; opacity: 0; }
+}
+@keyframes swipe-trail {
+  0% { left: 72%; width: 0; opacity: 0; }
+  12% { opacity: 1; }
+  70% { left: 26%; width: 42%; opacity: 0.9; }
+  100% { left: 22%; width: 0; opacity: 0; }
+}
+.swipe-hint { animation: swipe-hint 1.8s ease-in-out infinite both; }
+.swipe-trail { animation: swipe-trail 1.8s ease-in-out infinite both; }
+
+/* the mic tooltip bobs gently so the eye finds it */
+@keyframes mic-hint {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.mic-hint { animation: mic-hint 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-hint, .swipe-trail, .mic-hint { animation: none; }
+  .swipe-hint { left: 45%; }
+}
